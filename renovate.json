@@ -1,0 +1,46 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "schedule": ["before 6am on Monday"],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "labels": ["dependencies"],
+  "commitMessagePrefix": "chore(deps):",
+  "rebaseWhen": "conflicted",
+  "dependencyDashboard": true,
+  "managers": [
+    {
+      "fileMatch": ["^\\.github/workflows/[^/]+\\.ya?ml$"],
+      "matchManagers": ["github-actions"]
+    },
+    {
+      "description": "Golden-version JSON entries of the form \"packageName\": \"version\"",
+      "matchManagers": ["custom.regex"],
+      "fileMatch": ["\\.json$"],
+      "matchStrings": [
+        "\"(?<depName>[^\"]+)\":\\s*\"(?<currentValue>[0-9][^\"]*)\""
+      ],
+      "datasourceTemplate": "pypi"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group all GitHub Actions updates together",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "automerge": false
+    },
+    {
+      "description": "Group all golden-version toolchain/package updates together",
+      "matchManagers": ["custom.regex"],
+      "groupName": "Golden version packages",
+      "automerge": false
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  }
+}
