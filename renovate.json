@@ -16,11 +16,11 @@
       "matchManagers": ["github-actions"]
     },
     {
-      "description": "Golden-version JSON entries of the form \"packageName\": \"version\"",
+      "description": "Golden-version JSON entries of the form \"packageName\": \"version\". Update fileMatch to match your actual golden-version file(s).",
       "matchManagers": ["custom.regex"],
-      "fileMatch": ["\\.json$"],
+      "fileMatch": ["^golden[_-]?versions?\\.json$"],
       "matchStrings": [
-        "\"(?<depName>[^\"]+)\":\\s*\"(?<currentValue>[0-9][^\"]*)\""
+        "\"(?<depName>[^\"]+)\":\\s*\"v?(?<currentValue>[0-9][^\"]*)\""
       ],
       "datasourceTemplate": "pypi"
     }
