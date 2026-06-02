@@ -62,4 +62,12 @@ timeout 1800 bash /tmp/tt-install.sh \
   --flash-version "${FLASH_VER}" \
   --fw-version "${FW_VER}"
 
+INSTALLER_VENV="${HOME}/.tenstorrent-venv"
+if [[ -x "${INSTALLER_VENV}/bin/python" ]]; then
+  echo "${INSTALLER_VENV}" > /tmp/tenstorrent-installer-venv.path
+  echo "Installer Python venv recorded at ${INSTALLER_VENV}"
+else
+  echo "WARNING: expected installer venv not found at ${INSTALLER_VENV}/bin/python" >&2
+fi
+
 echo "=== Hardware install finished ==="

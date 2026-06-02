@@ -3,7 +3,7 @@
 set -euo pipefail
 
 GOLDEN_JSON="${GOLDEN_JSON:-/workspace/golden.json}"
-VENV_DIR="${VENV_DIR:-${HOME}/.tenstorrent-venv}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ ! -f "${GOLDEN_JSON}" ]]; then
   echo "golden.json not found at ${GOLDEN_JSON}" >&2
@@ -16,9 +16,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # shellcheck source=/dev/null
-if [[ -f "${VENV_DIR}/bin/activate" ]]; then
-  source "${VENV_DIR}/bin/activate"
-fi
+source "${SCRIPT_DIR}/activate-installer-python.sh"
 
 normalize_ver() {
   # Drop leading v and Debian/RPM revision suffix (e.g. 2.8.0-1 -> 2.8.0).

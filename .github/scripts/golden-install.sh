@@ -58,4 +58,10 @@ timeout 900 bash /tmp/tt-install.sh \
   --flash-version "${FLASH_VER}" \
   --fw-version "${FW_VER}"
 
+INSTALLER_VENV="${HOME}/.tenstorrent-venv"
+if [[ -x "${INSTALLER_VENV}/bin/python" ]]; then
+  echo "${INSTALLER_VENV}" > /tmp/tenstorrent-installer-venv.path
+  echo "Installer Python venv recorded at ${INSTALLER_VENV}"
+fi
+
 echo "=== Install finished ==="
