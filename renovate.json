@@ -3,44 +3,156 @@
   "extends": [
     "config:recommended"
   ],
-  "schedule": ["before 6am on Monday"],
-  "prConcurrentLimit": 5,
-  "prHourlyLimit": 2,
-  "labels": ["dependencies"],
-  "commitMessagePrefix": "chore(deps):",
-  "rebaseWhen": "conflicted",
-  "dependencyDashboard": true,
-  "managers": [
+  "description": "Golden.json bumps from Tenstorrent GitHub releases. Merge only after the Golden workflow is green.",
+  "timezone": "America/Toronto",
+  "labels": [
+    "dependencies",
+    "golden"
+  ],
+  "enabledManagers": [
+    "custom.regex"
+  ],
+  "automerge": false,
+  "platformAutomerge": false,
+  "ignoreTests": false,
+  "prConcurrentLimit": 3,
+  "customManagers": [
     {
-      "fileMatch": ["^\\.github/workflows/[^/]+\\.ya?ml$"],
-      "matchManagers": ["github-actions"]
+      "customType": "regex",
+      "description": "kmd (tt-kmd)",
+      "managerFilePatterns": [
+        "/golden\\.json$/"
+      ],
+      "matchStrings": [
+        "\"kmd\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "kmd",
+      "packageNameTemplate": "tenstorrent/tt-kmd",
+      "versioningTemplate": "semver"
     },
     {
-      "description": "Golden-version JSON entries of the form \"packageName\": \"version\". Update fileMatch to match your actual golden-version file(s).",
-      "matchManagers": ["custom.regex"],
-      "fileMatch": ["^golden[_-]?versions?\\.json$"],
-      "matchStrings": [
-        "\"(?<depName>[^\"]+)\":\\s*\"v?(?<currentValue>[0-9][^\"]*)\""
+      "customType": "regex",
+      "description": "smi (tt-smi)",
+      "managerFilePatterns": [
+        "/golden\\.json$/"
       ],
-      "datasourceTemplate": "pypi"
+      "matchStrings": [
+        "\"smi\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "smi",
+      "packageNameTemplate": "tenstorrent/tt-smi",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "flash (tt-flash)",
+      "managerFilePatterns": [
+        "/golden\\.json$/"
+      ],
+      "matchStrings": [
+        "\"flash\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "flash",
+      "packageNameTemplate": "tenstorrent/tt-flash",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "firmware (tt-system-firmware)",
+      "managerFilePatterns": [
+        "/golden\\.json$/"
+      ],
+      "matchStrings": [
+        "\"firmware\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "firmware",
+      "packageNameTemplate": "tenstorrent/tt-system-firmware",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "metalium-image-tag (tt-metal)",
+      "managerFilePatterns": [
+        "/golden\\.json$/"
+      ],
+      "matchStrings": [
+        "\"metalium-image-tag\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "metalium-image-tag",
+      "packageNameTemplate": "tenstorrent/tt-metal",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "installer (tt-installer)",
+      "managerFilePatterns": [
+        "/golden\\.json$/"
+      ],
+      "matchStrings": [
+        "\"installer\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "installer",
+      "packageNameTemplate": "tenstorrent/tt-installer",
+      "versioningTemplate": "semver"
     }
   ],
   "packageRules": [
     {
-      "description": "Group all GitHub Actions updates together",
-      "matchManagers": ["github-actions"],
-      "groupName": "GitHub Actions",
-      "automerge": false
+      "description": "tt-kmd release tags are ttkmd-X.Y.Z",
+      "matchDepNames": [
+        "kmd"
+      ],
+      "extractVersion": "^ttkmd-?(?<version>.*)$"
     },
     {
-      "description": "Group all golden-version toolchain/package updates together",
-      "matchManagers": ["custom.regex"],
-      "groupName": "Golden version packages",
-      "automerge": false
+      "description": "Strip leading v from GitHub release tags",
+      "matchDepNames": [
+        "smi",
+        "flash",
+        "firmware",
+        "metalium-image-tag",
+        "installer"
+      ],
+      "extractVersion": "^v(?<version>.*)$"
+    },
+    {
+      "description": "Firmware: only 19.x-style releases (ignore unrelated v80.x tags on GitHub)",
+      "matchDepNames": [
+        "firmware"
+      ],
+      "allowedVersions": "/^19\\.[0-9]+\\.[0-9]+$/"
+    },
+    {
+      "description": "Metalium: only track 0.x release tags (tt-metal container tags like v0.71.2)",
+      "matchDepNames": [
+        "metalium-image-tag"
+      ],
+      "allowedVersions": "/^0\\.[0-9]+\\.[0-9]+$/"
+    },
+    {
+      "description": "One grouped PR for all golden.json bumps (no separate major branch)",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchFileNames": [
+        "golden.json"
+      ],
+      "groupName": "golden-versions",
+      "separateMajorMinor": false,
+      "commitMessageTopic": "golden versions",
+      "prCreation": "immediate",
+      "ignoreTests": false,
+      "prBodyNotes": [
+        "This PR updates one or more pinned versions in `golden.json`.",
+        "The **Golden** workflow must pass on this PR before merge.",
+        "Do **not** merge until all required checks are green."
+      ]
     }
-  ],
-  "vulnerabilityAlerts": {
-    "enabled": true,
-    "labels": ["security"]
-  }
+  ]
 }
