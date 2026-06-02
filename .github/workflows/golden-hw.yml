@@ -1,0 +1,46 @@
+# Reusable workflow: install golden stack on self-hosted runners and stress-test tt-smi reset.
+# Runners and markers mirror tenstorrent/tt-smi/.github/workflows/test.yml (test-hardware job).
+name: Golden — hardware (tt-smi reset stress)
+run-name: Golden hw · ${{ github.event_name }}
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smi-reset-stress:
+    name: tt-smi reset stress (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - tt-ubuntu-2204-n150-stable
+          - tt-ubuntu-2204-p150b-stable
+
+    steps:
+      - name: Checkout golden versions repo
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Install golden stack (tt-installer)
+        env:
+          GOLDEN_JSON: ${{ github.workspace }}/golden.json
+        run: sudo env GOLDEN_JSON="${GOLDEN_JSON}" bash .github/scripts/golden-install-hw.sh
+
+      - name: Verify installed smi matches golden.json
+        env:
+          GOLDEN_JSON: ${{ github.workspace }}/golden.json
+          VENV_DIR: /root/.tenstorrent-venv
+        run: sudo -E env GOLDEN_JSON="${GOLDEN_JSON}" VENV_DIR="${VENV_DIR}" bash .github/scripts/verify-golden-versions.sh
+
+      - name: PCI reset stress (10x, installer tt-smi)
+        env:
+          VENV_DIR: /root/.tenstorrent-venv
+          NUM_RESETS: "10"
+        run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" bash .github/scripts/golden-smi-reset-stress.sh

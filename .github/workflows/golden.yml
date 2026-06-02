@@ -1,0 +1,38 @@
+# Golden validation for pinned Tenstorrent stack versions in golden.json.
+#
+# No-hardware jobs follow patterns from:
+#   - ../tt-installer/.github/workflows/test-debian-ubuntu.yml (installer in container)
+#   - ../tt-smi/.github/workflows/test.yml (split no-hw vs hardware; hardware TBD)
+name: Golden
+run-name: Golden · ${{ github.event_name }}
+
+on:
+  push:
+    branches:
+      - main
+      # Renovate pushes here first; Golden runs on the branch before/while the PR is open.
+      - renovate/**
+  pull_request:
+    paths:
+      - golden.json
+      - .github/workflows/golden*.yml
+      - .github/scripts/**
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Why you are running this workflow (optional)
+        required: false
+        type: string
+
+concurrency:
+  group: golden-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  no-hw-install-verify:
+    name: No hardware — install & verify versions
+    uses: ./.github/workflows/golden-no-hw.yml
+
+  hw-smi-reset-stress:
+    name: Hardware — tt-smi PCI reset stress (n150 / p150)
+    uses: ./.github/workflows/golden-hw.yml
