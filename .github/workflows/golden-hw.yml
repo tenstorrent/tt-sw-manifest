@@ -1,5 +1,9 @@
 # Reusable workflow: install golden stack on self-hosted runners and stress-test tt-smi reset.
 # Runners and markers mirror tenstorrent/tt-smi/.github/workflows/test.yml (test-hardware job).
+#
+# Self-hosted runners often log "sudo: unable to resolve host ubuntu" on every sudo call when
+# the machine hostname (ubuntu) is not in /etc/hosts. That warning is harmless; steps still pass.
+# To silence it on a runner: echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts
 name: Golden — hardware (tt-smi reset stress)
 run-name: Golden hw · ${{ github.event_name }}
 

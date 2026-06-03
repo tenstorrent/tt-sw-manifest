@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # PCI reset stress: run `tt-smi -r` (reset all devices) NUM_RESETS times using the installer venv.
+# Invoked via sudo on self-hosted HW runners; see golden-hw.yml for the harmless
+# "sudo: unable to resolve host ubuntu" log line when hostname is missing from /etc/hosts.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
