@@ -70,7 +70,7 @@ timeout 1800 bash /tmp/tt-install.sh \
   --mode-non-interactive \
   --install-kmd \
   --no-install-hugepages \
-  --update-firmware on \
+  --update-firmware force \
   --install-metalium-container \
   --no-install-metalium-models-container \
   --no-install-forge-container \
