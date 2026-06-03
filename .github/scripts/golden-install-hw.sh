@@ -4,7 +4,7 @@
 #
 # Image pulls:
 #   - tt-installer pulls tt-metalium-ubuntu-22.04-release-amd64 (metal-version) only.
-#   - This script additionally pulls upstream-tests-bh (same metal-version) for golden CI upstream step.
+#   - This script pulls upstream-tests-bh when metal-upstream-tag is set (dev tags, not metal-version).
 set -euo pipefail
 
 GOLDEN_JSON="${GOLDEN_JSON:-/workspace/golden.json}"
@@ -35,8 +35,8 @@ SMI_VER="$(jq -r '.smi' "${GOLDEN_JSON}")"
 FLASH_VER="$(jq -r '.flash' "${GOLDEN_JSON}")"
 FW_VER="$(jq -r '.firmware' "${GOLDEN_JSON}")"
 METAL_VERSION="$(normalize_metal_image_tag "$(read_golden_metal_version "${GOLDEN_JSON}")")"
-METAL_UPSTREAM_IMAGE="$(resolve_metal_upstream_image "${GOLDEN_JSON}")"
 METALIUM_RELEASE_IMAGE="$(resolve_metalium_release_image "${GOLDEN_JSON}")"
+METAL_UPSTREAM_TAG="$(read_golden_metal_upstream_tag "${GOLDEN_JSON}")"
 
 CONTAINER_RUNTIME="docker"
 if command -v docker >/dev/null 2>&1; then
@@ -61,7 +61,11 @@ echo "flash:       ${FLASH_VER}"
 echo "firmware:    ${FW_VER}"
 echo "metal-version: ${METAL_VERSION}"
 echo "  release:   ${METALIUM_RELEASE_IMAGE} (installer)"
-echo "  upstream:  ${METAL_UPSTREAM_IMAGE} (golden CI only, not installer)"
+if [[ -n "${METAL_UPSTREAM_TAG}" ]]; then
+  echo "  upstream:  $(metal_upstream_image_ref "${METAL_UPSTREAM_TAG}") (golden CI only, not installer)"
+else
+  echo "  upstream:  (skipped — metal-upstream-tag not set)"
+fi
 
 curl -fsSL "${INSTALLER_URL}" -o /tmp/tt-install.sh
 chmod +x /tmp/tt-install.sh
@@ -101,12 +105,18 @@ if [[ -x "${TT_METALIUM_WRAPPER}" ]]; then
   echo "Installer tt-metalium image: $(cat /tmp/tenstorrent-metalium-image.path 2>/dev/null || echo unknown)"
 fi
 
-echo "Pulling upstream-tests-bh (golden metal upstream step; not part of tt-installer)..."
-if ${CONTAINER_RUNTIME} pull "${METAL_UPSTREAM_IMAGE}"; then
-  echo "${METAL_UPSTREAM_IMAGE}" > /tmp/tenstorrent-metal-upstream-image.path
+if [[ -n "${METAL_UPSTREAM_TAG}" ]]; then
+  METAL_UPSTREAM_IMAGE="$(metal_upstream_image_ref "${METAL_UPSTREAM_TAG}")"
+  echo "Pulling upstream-tests-bh (golden metal upstream step; not part of tt-installer)..."
+  if ${CONTAINER_RUNTIME} pull "${METAL_UPSTREAM_IMAGE}"; then
+    echo "${METAL_UPSTREAM_IMAGE}" > /tmp/tenstorrent-metal-upstream-image.path
+  else
+    echo "WARNING: failed to pull ${METAL_UPSTREAM_IMAGE}; upstream step will retry pull" >&2
+    echo "${METAL_UPSTREAM_IMAGE}" > /tmp/tenstorrent-metal-upstream-image.path
+  fi
 else
-  echo "WARNING: failed to pull ${METAL_UPSTREAM_IMAGE}; upstream step will retry pull" >&2
-  echo "${METAL_UPSTREAM_IMAGE}" > /tmp/tenstorrent-metal-upstream-image.path
+  echo "Skipping upstream-tests-bh pull (metal-upstream-tag not set in golden.json)."
+  rm -f /tmp/tenstorrent-metal-upstream-image.path
 fi
 
 echo "=== Hardware install finished ==="

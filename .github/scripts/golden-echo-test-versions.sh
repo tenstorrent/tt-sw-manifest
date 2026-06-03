@@ -18,6 +18,7 @@ golden_echo_golden_json_pins() {
     "  smi:           \(.smi)",
     "  flash:         \(.flash)",
     "  firmware:      \(.firmware)",
-    "  metal-version: \(.["metal-version"] // .["metalium-image-tag"] // "n/a")"
+    "  metal-version: \(.["metal-version"] // .["metalium-image-tag"] // "n/a")",
+    "  metal-upstream-tag: \(.["metal-upstream-tag"] // "(not set)")"
   ' "${golden_json}"
 }

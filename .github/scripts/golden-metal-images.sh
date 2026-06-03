@@ -21,7 +21,7 @@ normalize_metal_image_tag() {
   esac
 }
 
-# Single tt-metal pin in golden.json → both container image tags.
+# Customer release container tag (tt-metalium-ubuntu-22.04-release-amd64).
 read_golden_metal_version() {
   local golden_json="${1:?}"
   jq -r '
@@ -29,6 +29,18 @@ read_golden_metal_version() {
     // .["metalium-image-tag"]
     // empty
   ' "${golden_json}"
+}
+
+# upstream-tests-bh uses CI dev tags (v0.71.0-dev20260516-…), not release tags (v0.71.2).
+# Set metal-upstream-tag explicitly when enabling the upstream step on p150b.
+read_golden_metal_upstream_tag() {
+  local golden_json="${1:?}"
+  jq -r '.["metal-upstream-tag"] // empty' "${golden_json}"
+}
+
+golden_metal_upstream_enabled() {
+  local golden_json="${1:?}"
+  [[ -n "$(read_golden_metal_upstream_tag "${golden_json}")" ]]
 }
 
 metalium_release_image_ref() {
@@ -48,5 +60,11 @@ resolve_metalium_release_image() {
 
 resolve_metal_upstream_image() {
   local golden_json="${1:?}"
-  metal_upstream_image_ref "$(read_golden_metal_version "${golden_json}")"
+  local tag
+  tag="$(read_golden_metal_upstream_tag "${golden_json}")"
+  if [[ -z "${tag}" ]]; then
+    echo "metal-upstream-tag is not set in golden.json" >&2
+    return 1
+  fi
+  metal_upstream_image_ref "${tag}"
 }

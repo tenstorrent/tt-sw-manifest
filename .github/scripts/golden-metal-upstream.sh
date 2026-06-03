@@ -30,6 +30,14 @@ if [[ "$(golden_metal_board_bool metal-upstream false)" != "true" ]]; then
   exit 0
 fi
 
+if ! golden_metal_upstream_enabled "${GOLDEN_JSON}"; then
+  echo "SKIP: metal-upstream-tag is not set in golden.json."
+  echo "  upstream-tests-bh is published as CI dev tags (e.g. v0.71.0-dev20260516-2-g…), not release tags."
+  echo "  metal-version ($(read_golden_metal_version "${GOLDEN_JSON}")) applies to tt-metalium release only."
+  echo "  To run upstream on p150b, pin an existing tag: ghcr.io/tenstorrent/tt-metal/upstream-tests-bh:<tag>"
+  exit 0
+fi
+
 METAL_TARGET="$(jq -r '.["metal-target"] // empty' <<<"${GOLDEN_METAL_BOARD}")"
 if [[ -z "${METAL_TARGET}" || "${METAL_TARGET}" == "null" ]]; then
   echo "metal-target is required when metal-upstream is enabled" >&2
@@ -61,13 +69,15 @@ _resolve_upstream_image() {
 
 _resolve_container_cmd
 METAL_VERSION="$(read_golden_metal_version "${GOLDEN_JSON}")"
+METAL_UPSTREAM_TAG="$(read_golden_metal_upstream_tag "${GOLDEN_JSON}")"
 METAL_IMAGE="$(_resolve_upstream_image)"
 
 golden_echo_test_banner "Metal upstream tests (upstream-tests-bh)"
 golden_echo_golden_json_pins "${GOLDEN_JSON}"
 echo "running:"
-echo "  metal-version: ${METAL_VERSION}"
-echo "  image:         ${METAL_IMAGE}"
+echo "  metal-version:       ${METAL_VERSION} (release / unit test)"
+echo "  metal-upstream-tag:  ${METAL_UPSTREAM_TAG}"
+echo "  image:               ${METAL_IMAGE}"
 echo "  target:        ${METAL_TARGET}"
 echo "  runner label:  ${golden_metal_match_key}"
 echo "  instance:      ${GITHUB_RUNNER_NAME:-n/a}"
@@ -76,7 +86,7 @@ echo "  script:        ${UPSTREAM_SCRIPT}"
 
 if ! ${CONTAINER_CMD} pull "${METAL_IMAGE}"; then
   echo "FAIL: could not pull ${METAL_IMAGE}" >&2
-  echo "Check metal-version in golden.json — upstream-tests-bh tag must exist on GHCR." >&2
+  echo "Check metal-upstream-tag in golden.json — tag must exist on GHCR (dev tags, not release semver)." >&2
   exit 1
 fi
 

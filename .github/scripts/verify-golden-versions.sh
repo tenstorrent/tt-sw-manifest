@@ -27,7 +27,11 @@ golden_echo_golden_json_pins "${GOLDEN_JSON}"
 echo "running:"
 echo "  metal-version: $(read_golden_metal_version "${GOLDEN_JSON}")"
 echo "  release image: $(resolve_metalium_release_image "${GOLDEN_JSON}")"
-echo "  upstream image: $(resolve_metal_upstream_image "${GOLDEN_JSON}")"
+if golden_metal_upstream_enabled "${GOLDEN_JSON}"; then
+  echo "  upstream image: $(resolve_metal_upstream_image "${GOLDEN_JSON}")"
+else
+  echo "  upstream image: (not configured — set metal-upstream-tag to enable)"
+fi
 echo ""
 
 normalize_ver() {

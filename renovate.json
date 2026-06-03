@@ -75,7 +75,7 @@
     },
     {
       "customType": "regex",
-      "description": "metal-version (tt-metal — release + upstream-tests-bh container tags)",
+      "description": "metal-version (tt-metalium release container; upstream uses metal-upstream-tag manually)",
       "managerFilePatterns": [
         "/golden\\.json$/"
       ],

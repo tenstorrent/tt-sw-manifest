@@ -39,22 +39,22 @@ Each HW test script prints a **version banner** at the start (golden pins + what
 | **`golden-smi-reset-stress.sh`** | Test | HW only | Runs **`tt-smi -r`** (PCI reset all devices) **10×** using installer venv `tt-smi`. Stresses reset path after firmware/KMD install. |
 | **`tests/metalium-workload.py`** | Test (Python) | HW: metal unit | Opens device 0 via **ttnn**, runs a small bfloat16 tensor add. Copied from tt-installer’s metalium workload pattern. |
 | **`golden-metal-unit-test.sh`** | Script | HW: metal unit | Pulls **release** image `tt-metalium-ubuntu-22.04-release-amd64:<metal-version>`, `docker run --privileged` with `/dev/tenstorrent`, hugepages, and workload mounted read-only; entrypoint `python3 /metalium-workload.py`. Enabled on all boards in `golden-metal-boards.json`. |
-| **`golden-metal-upstream.sh`** | Test | HW: metal upstream | Pulls **`upstream-tests-bh:<metal-version>`**, runs `run_upstream_tests_vanilla.sh` inside the container with host devices mounted. Target from board config (e.g. `blackhole_no_models` on p150b). **Skipped on n150** (Wormhole; upstream image is Blackhole-only). Optional patches (e.g. disable determinism interval on p150b). |
+| **`golden-metal-upstream.sh`** | Test | HW: metal upstream | Pulls **`upstream-tests-bh:<metal-upstream-tag>`** when set, runs `run_upstream_tests_vanilla.sh` on p150b (`blackhole_no_models`). **Skipped on n150** or when `metal-upstream-tag` is unset (no release tag on upstream image). Optional patches (e.g. determinism on p150b). |
 | **`activate-installer-python.sh`** | Helper | (sourced) | Resolves installer venv (`VENV_DIR`, `/tmp/tenstorrent-installer-venv.path`, or `/root/.tenstorrent-venv`) and prepends `bin` to `PATH` so **`sudo` steps still use installer `tt-smi`**. |
 | **`golden-echo-test-versions.sh`** | Helper | (sourced) | Prints test banners and golden pin summary before each step. |
 | **`golden-metal-images.sh`** | Helper | (sourced) | Builds GHCR refs from `metal-version` (normalizes `v` prefix). |
 | **`golden-metal-board.sh`** | Helper | (sourced) | Matches `GOLDEN_RUNNER_LABEL` / `GITHUB_RUNNER_NAME` prefix to `.github/golden-metal-boards.json` (unit vs upstream, `metal-target`, patches). |
 
-## Container images (`metal-version`)
+## Container images
 
-One pin in `golden.json` (e.g. `v0.71.2`) drives two images via `golden-metal-images.sh`:
+| Pin in `golden.json` | Image | Used for |
+|----------------------|-------|----------|
+| **`metal-version`** (e.g. `v0.71.2`) | `tt-metalium-ubuntu-22.04-release-amd64:<tag>` | Customer install + metal unit test (`tests/metalium-workload.py`) |
+| **`metal-upstream-tag`** (optional) | `upstream-tests-bh:<tag>` | Metal upstream on p150b only |
 
-| Image | Pulled by | Used in |
-|-------|-----------|---------|
-| `ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:<tag>` | **tt-installer** (HW install) + metal unit script | `golden-metal-unit-test.sh` |
-| `ghcr.io/tenstorrent/tt-metal/upstream-tests-bh:<tag>` | **`golden-install-hw.sh`** only (installer does not pull this) | `golden-metal-upstream.sh` |
+Release tags like `v0.71.2` exist on the **metalium release** image. **`upstream-tests-bh` does not use those tags** — GHCR only has CI dev tags (e.g. `v0.71.0-dev20260516-2-ga8aa13392b0`). If `metal-upstream-tag` is omitted, the upstream step is **skipped** (install, verify, smi stress, and unit test still run).
 
-If `upstream-tests-bh` is not published at that tag on GHCR, the upstream step fails until the tag exists.
+To enable upstream, set `metal-upstream-tag` to a tag that exists on GHCR (list with the registry API or `skopeo list-tags docker://ghcr.io/tenstorrent/tt-metal/upstream-tests-bh`). Align it manually with the `metal-version` line you care about.
 
 ### Board-specific metal behavior
 
@@ -71,7 +71,8 @@ Config: `.github/golden-metal-boards.json`.
 |-------|------|
 | `installer` | tt-installer release used to fetch `install.sh` |
 | `kmd`, `smi`, `flash`, `firmware` | Passed to tt-installer (`--kmd-version`, etc.) |
-| `metal-version` | tt-metal container tag for **both** release and upstream images |
+| `metal-version` | tt-metalium **release** container tag (installer + unit test) |
+| `metal-upstream-tag` | Optional `upstream-tests-bh` dev tag; omit to skip upstream on p150b |
 
 ## Logs
 
