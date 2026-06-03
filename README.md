@@ -96,4 +96,24 @@ sudo ./complete_installer_test.sh --skip-install --runner-label tt-ubuntu-2204-n
 
 See `./complete_installer_test.sh --help` for options.
 
+**Local full upstream only** (install without firmware flash, all `blackhole_no_models` upstream suites — no smi stress / unit test):
+
+```bash
+# Fresh pull of container images + install (with hugepages) + upstream
+sudo ./local_bh_upstream_tests.sh --remove-images
+
+# Normal run (keeps existing docker images)
+sudo ./local_bh_upstream_tests.sh
+
+# Upstream only after install / reboot
+sudo ./local_bh_upstream_tests.sh --skip-install
+```
+
+Remove images manually (tags from `golden.json`):
+
+```bash
+docker rmi ghcr.io/tenstorrent/tt-metal/upstream-tests-bh:v0.71.0-dev20260516-2-ga8aa13392b0
+docker rmi ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:v0.71.2
+```
+
 **Hugepages:** HW install uses `--install-hugepages` (tt-installer default). If metal tests fail with missing `/dev/hugepages-1G`, re-run install or reboot once after the first hugepages setup (`--reboot-option never` in CI avoids auto-reboot).

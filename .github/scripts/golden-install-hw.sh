@@ -38,15 +38,26 @@ FW_VER="$(jq -r '.firmware' "${GOLDEN_JSON}")"
 METAL_VERSION="$(normalize_metal_image_tag "$(read_golden_metal_version "${GOLDEN_JSON}")")"
 METALIUM_RELEASE_IMAGE="$(resolve_metalium_release_image "${GOLDEN_JSON}")"
 METAL_UPSTREAM_TAG="$(read_golden_metal_upstream_tag "${GOLDEN_JSON}")"
+UPDATE_FIRMWARE="${GOLDEN_UPDATE_FIRMWARE:-force}"
 
+# upstream-local: skip Docker/metalium reinstall (local_bh_upstream_tests.sh).
+INSTALL_PROFILE="${GOLDEN_INSTALL_PROFILE:-ci}"
+INSTALL_METALIUM_CONTAINER=on
 CONTAINER_RUNTIME="docker"
-if command -v docker >/dev/null 2>&1; then
-  CONTAINER_RUNTIME="docker"
+if [[ "${INSTALL_PROFILE}" == upstream-local ]]; then
+  INSTALL_METALIUM_CONTAINER=off
+  if command -v docker >/dev/null 2>&1; then
+    CONTAINER_RUNTIME=no
+  elif command -v podman >/dev/null 2>&1; then
+    CONTAINER_RUNTIME=no
+  fi
+elif command -v docker >/dev/null 2>&1; then
+  CONTAINER_RUNTIME=docker
 elif command -v podman >/dev/null 2>&1; then
-  CONTAINER_RUNTIME="podman"
+  CONTAINER_RUNTIME=podman
 else
   echo "WARNING: neither docker nor podman found; metalium container install may fail" >&2
-  CONTAINER_RUNTIME="docker"
+  CONTAINER_RUNTIME=docker
 fi
 
 if [[ -z "${INSTALLER_URL}" ]]; then
@@ -59,9 +70,14 @@ echo "installer:   v${INSTALLER_VER} (${INSTALLER_URL})"
 echo "kmd:         ${KMD_VER}"
 echo "smi:         ${SMI_VER}"
 echo "flash:       ${FLASH_VER}"
-echo "firmware:    ${FW_VER}"
+echo "firmware:    ${FW_VER} (update-firmware: ${UPDATE_FIRMWARE})"
+echo "install profile: ${INSTALL_PROFILE}"
+echo "  container-runtime: ${CONTAINER_RUNTIME}"
+echo "  metalium container: ${INSTALL_METALIUM_CONTAINER}"
 echo "metal-version: ${METAL_VERSION}"
-echo "  release:   ${METALIUM_RELEASE_IMAGE} (installer)"
+if [[ "${INSTALL_METALIUM_CONTAINER}" == on ]]; then
+  echo "  release:   ${METALIUM_RELEASE_IMAGE} (installer)"
+fi
 if [[ -n "${METAL_UPSTREAM_TAG}" ]]; then
   echo "  upstream:  $(metal_upstream_image_ref "${METAL_UPSTREAM_TAG}") (golden CI only, not installer)"
 else
@@ -71,12 +87,17 @@ fi
 curl -fsSL "${INSTALLER_URL}" -o /tmp/tt-install.sh
 chmod +x /tmp/tt-install.sh
 
+INSTALL_METALIUM_FLAG=(--install-metalium-container)
+if [[ "${INSTALL_METALIUM_CONTAINER}" == off ]]; then
+  INSTALL_METALIUM_FLAG=(--no-install-metalium-container)
+fi
+
 timeout 1800 bash /tmp/tt-install.sh \
   --mode-non-interactive \
   --install-kmd \
   --install-hugepages \
-  --update-firmware force \
-  --install-metalium-container \
+  --update-firmware "${UPDATE_FIRMWARE}" \
+  "${INSTALL_METALIUM_FLAG[@]}" \
   --no-install-metalium-models-container \
   --no-install-forge-container \
   --no-install-sfpi \
@@ -106,10 +127,19 @@ if [[ -x "${TT_METALIUM_WRAPPER}" ]]; then
   echo "Installer tt-metalium image: $(cat /tmp/tenstorrent-metalium-image.path 2>/dev/null || echo unknown)"
 fi
 
+PULL_RUNTIME="${CONTAINER_RUNTIME}"
+if [[ "${PULL_RUNTIME}" == no ]]; then
+  if command -v docker >/dev/null 2>&1; then
+    PULL_RUNTIME=docker
+  elif command -v podman >/dev/null 2>&1; then
+    PULL_RUNTIME=podman
+  fi
+fi
+
 if [[ -n "${METAL_UPSTREAM_TAG}" ]]; then
   METAL_UPSTREAM_IMAGE="$(metal_upstream_image_ref "${METAL_UPSTREAM_TAG}")"
   echo "Pulling upstream-tests-bh (golden metal upstream step; not part of tt-installer)..."
-  if ${CONTAINER_RUNTIME} pull "${METAL_UPSTREAM_IMAGE}"; then
+  if ${PULL_RUNTIME} pull "${METAL_UPSTREAM_IMAGE}"; then
     echo "${METAL_UPSTREAM_IMAGE}" > /tmp/tenstorrent-metal-upstream-image.path
   else
     echo "WARNING: failed to pull ${METAL_UPSTREAM_IMAGE}; upstream step will retry pull" >&2

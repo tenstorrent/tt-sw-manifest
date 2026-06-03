@@ -49,6 +49,30 @@ PATCHES="$(jq -r '.["upstream-patches"] // [] | join(",")' <<<"${GOLDEN_METAL_BO
 
 golden_check_hugepages
 
+golden_upstream_print_summary() {
+  local log_file="${1:?}"
+  printf '\n========== Upstream test summary ==========\n'
+  printf 'Log file: %s\n\n' "${log_file}"
+  if [[ ! -s "${log_file}" ]]; then
+    echo "(log file is empty)"
+    return 0
+  fi
+  _summary_grep() {
+    local pattern="$1"
+    if command -v rg >/dev/null 2>&1; then
+      rg -n -e "${pattern}" "${log_file}" 2>/dev/null || true
+    else
+      grep -En "${pattern}" "${log_file}" 2>/dev/null || true
+    fi
+  }
+  echo "GTest results:"
+  _summary_grep '\[  (PASSED|FAILED|SKIPPED)  \]|\[==========\]|tests from |FAILED TEST|passed' | tail -n 40
+  echo ""
+  echo "Failures and errors:"
+  _summary_grep '\[  FAILED  \]|^FAIL:|^ERROR|Hugepages are not allocated|no huge page mount' | tail -n 30
+  printf '==========================================\n'
+}
+
 _resolve_container_cmd() {
   if [[ -n "${CONTAINER_CMD:-}" ]]; then
     return 0
@@ -88,15 +112,23 @@ echo "  instance:      ${GITHUB_RUNNER_NAME:-n/a}"
 echo "  runtime:       ${CONTAINER_CMD}"
 echo "  script:        ${UPSTREAM_SCRIPT}"
 
-if ! ${CONTAINER_CMD} pull "${METAL_IMAGE}"; then
+if ! ${CONTAINER_CMD} pull "${METAL_IMAGE}" 2>&1; then
   echo "FAIL: could not pull ${METAL_IMAGE}" >&2
   echo "Check metal-upstream-tag in golden.json — tag must exist on GHCR (dev tags, not release semver)." >&2
   exit 1
 fi
 
-LOG_FILE="$(mktemp)"
+if [[ -n "${GOLDEN_UPSTREAM_LOG_FILE:-}" ]]; then
+  LOG_FILE="${GOLDEN_UPSTREAM_LOG_FILE}"
+else
+  LOG_DIR="${GOLDEN_UPSTREAM_LOG_DIR:-${REPO_ROOT}/logs}"
+  mkdir -p "${LOG_DIR}"
+  LOG_FILE="${LOG_DIR}/upstream-${METAL_TARGET}-$(date +%Y%m%d-%H%M%S).log"
+fi
+echo "Upstream container log (stdout+stderr): ${LOG_FILE}"
+
 cleanup() {
-  rm -f "${LOG_FILE}"
+  :
 }
 
 run_in_container() {
@@ -133,18 +165,16 @@ fi
 '${UPSTREAM_SCRIPT}' '${METAL_TARGET}'
 "
 
-echo "while true; do curl -fsSL -o /dev/null https://tenstorrent.com || true; sleep 10; done" > /tmp/golden-metal-network-keepalive
-chmod +x /tmp/golden-metal-network-keepalive
-/tmp/golden-metal-network-keepalive &
-KEEPALIVE_PID=$!
+trap cleanup EXIT
 
-trap 'cleanup; kill "${KEEPALIVE_PID}" 2>/dev/null || true; rm -f /tmp/golden-metal-network-keepalive' EXIT
-
-if ! run_in_container "${CONTAINER_SCRIPT}" >"${LOG_FILE}" 2>&1; then
+set -o pipefail
+if ! run_in_container "${CONTAINER_SCRIPT}" 2>&1 | tee -a "${LOG_FILE}"; then
   echo "FAIL: metal upstream tests failed" >&2
-  tail -n 200 "${LOG_FILE}" >&2 || true
+  echo "See full log: ${LOG_FILE}" >&2
+  golden_upstream_print_summary "${LOG_FILE}" || true
   exit 1
 fi
 
-tail -n 50 "${LOG_FILE}"
+golden_upstream_print_summary "${LOG_FILE}"
 echo "PASS: metal upstream (${METAL_TARGET})"
+echo "Full log: ${LOG_FILE}"
