@@ -46,6 +46,7 @@ if [[ -z "${METAL_TARGET}" || "${METAL_TARGET}" == "null" ]]; then
   exit 1
 fi
 PATCHES="$(jq -r '.["upstream-patches"] // [] | join(",")' <<<"${GOLDEN_METAL_BOARD}")"
+mapfile -t UPSTREAM_TEST_SUITES < <(jq -r '.["upstream-test-suites"][]? // empty' <<<"${GOLDEN_METAL_BOARD}")
 
 golden_check_hugepages
 
@@ -83,6 +84,11 @@ echo "  metal-version:       ${METAL_VERSION} (release / unit test)"
 echo "  metal-upstream-tag:  ${METAL_UPSTREAM_TAG}"
 echo "  image:               ${METAL_IMAGE}"
 echo "  target:        ${METAL_TARGET}"
+if [[ ${#UPSTREAM_TEST_SUITES[@]} -gt 0 ]]; then
+  echo "  test-suites:   ${UPSTREAM_TEST_SUITES[*]} (single-card; skips UMD/eth cluster)"
+else
+  echo "  test-suites:   all suites for ${METAL_TARGET}"
+fi
 echo "  runner label:  ${golden_metal_match_key}"
 echo "  instance:      ${GITHUB_RUNNER_NAME:-n/a}"
 echo "  runtime:       ${CONTAINER_CMD}"
@@ -118,6 +124,17 @@ run_in_container() {
     -lc "$1"
 }
 
+UPSTREAM_SUITE_RUNS=""
+if [[ ${#UPSTREAM_TEST_SUITES[@]} -eq 0 ]]; then
+  UPSTREAM_SUITE_RUNS="'${UPSTREAM_SCRIPT}' '${METAL_TARGET}'"
+else
+  for suite in "${UPSTREAM_TEST_SUITES[@]}"; do
+    UPSTREAM_SUITE_RUNS+="echo '=== upstream suite: ${suite} ==='
+'${UPSTREAM_SCRIPT}' --test-suite '${suite}' '${METAL_TARGET}'
+"
+  done
+fi
+
 CONTAINER_SCRIPT="set -euo pipefail
 cd '${CONTAINER_WORKDIR}'
 if [[ ! -f '${UPSTREAM_SCRIPT}' ]]; then
@@ -130,15 +147,10 @@ fi
 if [[ '${PATCHES}' == *whisper_ci* ]]; then
   sed -i 's/pytest\\(.*\\)test_demo_for_conditional_generation/CI=false pytest\\1test_demo_for_conditional_generation/g' '${UPSTREAM_SCRIPT}'
 fi
-'${UPSTREAM_SCRIPT}' '${METAL_TARGET}'
+${UPSTREAM_SUITE_RUNS}
 "
 
-echo "while true; do curl -fsSL -o /dev/null https://tenstorrent.com || true; sleep 10; done" > /tmp/golden-metal-network-keepalive
-chmod +x /tmp/golden-metal-network-keepalive
-/tmp/golden-metal-network-keepalive &
-KEEPALIVE_PID=$!
-
-trap 'cleanup; kill "${KEEPALIVE_PID}" 2>/dev/null || true; rm -f /tmp/golden-metal-network-keepalive' EXIT
+trap 'cleanup' EXIT
 
 if ! run_in_container "${CONTAINER_SCRIPT}" >"${LOG_FILE}" 2>&1; then
   echo "FAIL: metal upstream tests failed" >&2
