@@ -11,6 +11,7 @@ Both jobs start from the same pins in `golden.json`. [tt-installer](https://gith
 | `tenstorrent-dkms` (KMD) | Host driver for all HW tests |
 | Python venv at `~/.tenstorrent-venv` (`--python-choice new-venv`) | `tt-smi`, `tt-flash` via `activate-installer-python.sh` |
 | Firmware flash (HW only, `--update-firmware force`) | Device firmware before smi/metal |
+| Hugepages (`--install-hugepages` via tenstorrent-tools) | Host `/dev/hugepages-1G` for metal unit + upstream containers |
 | `~/.local/bin/tt-metalium` + release container pull (HW only) | Metal unit test image |
 | Docker/Podman (`--install-container-runtime`) | Metal unit + upstream containers |
 
@@ -77,3 +78,22 @@ Config: `.github/golden-metal-boards.json`.
 ## Logs
 
 Self-hosted runners may print `sudo: unable to resolve host ubuntu` on every `sudo` call when the hostname is not in `/etc/hosts`. That warning is harmless; steps still pass. See `.github/workflows/golden-hw.yml`.
+
+## Local test run
+
+From a clone of this repo, run the same steps as CI and get a terminal summary:
+
+```bash
+# Hardware (root): install + verify + smi stress + metal tests
+sudo ./complete_installer_test.sh --runner-label tt-ubuntu-2204-p150b-stable
+
+# No device: install + verify only
+./complete_installer_test.sh --no-hw
+
+# Tests only (after install)
+sudo ./complete_installer_test.sh --skip-install --runner-label tt-ubuntu-2204-n150-stable
+```
+
+See `./complete_installer_test.sh --help` for options.
+
+**Hugepages:** HW install uses `--install-hugepages` (tt-installer default). If metal tests fail with missing `/dev/hugepages-1G`, re-run install or reboot once after the first hugepages setup (`--reboot-option never` in CI avoids auto-reboot).

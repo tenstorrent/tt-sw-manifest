@@ -5,6 +5,7 @@
 # Image pulls:
 #   - tt-installer pulls tt-metalium-ubuntu-22.04-release-amd64 (metal-version) only.
 #   - This script pulls upstream-tests-bh when metal-upstream-tag is set (dev tags, not metal-version).
+# Hugepages: enabled (--install-hugepages) — required for metal upstream / UMD tests on host.
 set -euo pipefail
 
 GOLDEN_JSON="${GOLDEN_JSON:-/workspace/golden.json}"
@@ -73,7 +74,7 @@ chmod +x /tmp/tt-install.sh
 timeout 1800 bash /tmp/tt-install.sh \
   --mode-non-interactive \
   --install-kmd \
-  --no-install-hugepages \
+  --install-hugepages \
   --update-firmware force \
   --install-metalium-container \
   --no-install-metalium-models-container \

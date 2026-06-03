@@ -17,6 +17,8 @@ source "${SCRIPT_DIR}/golden-metal-images.sh"
 source "${SCRIPT_DIR}/golden-metal-board.sh"
 # shellcheck source=golden-echo-test-versions.sh
 source "${SCRIPT_DIR}/golden-echo-test-versions.sh"
+# shellcheck source=golden-check-hugepages.sh
+source "${SCRIPT_DIR}/golden-check-hugepages.sh"
 
 if [[ ! -f "${GOLDEN_JSON}" ]]; then
   echo "golden.json not found at ${GOLDEN_JSON}" >&2
@@ -44,6 +46,8 @@ if [[ -z "${METAL_TARGET}" || "${METAL_TARGET}" == "null" ]]; then
   exit 1
 fi
 PATCHES="$(jq -r '.["upstream-patches"] // [] | join(",")' <<<"${GOLDEN_METAL_BOARD}")"
+
+golden_check_hugepages
 
 _resolve_container_cmd() {
   if [[ -n "${CONTAINER_CMD:-}" ]]; then

@@ -14,6 +14,8 @@ source "${SCRIPT_DIR}/golden-metal-images.sh"
 source "${SCRIPT_DIR}/golden-metal-board.sh"
 # shellcheck source=golden-echo-test-versions.sh
 source "${SCRIPT_DIR}/golden-echo-test-versions.sh"
+# shellcheck source=golden-check-hugepages.sh
+source "${SCRIPT_DIR}/golden-check-hugepages.sh"
 
 if [[ ! -f "${GOLDEN_JSON}" ]]; then
   echo "golden.json not found at ${GOLDEN_JSON}" >&2
@@ -30,6 +32,8 @@ if [[ "$(golden_metal_board_bool metal-unit-test true)" != "true" ]]; then
   echo "SKIP: metal unit test disabled for this runner"
   exit 0
 fi
+
+golden_check_hugepages
 
 _resolve_container_cmd() {
   if [[ -n "${CONTAINER_CMD:-}" ]]; then
