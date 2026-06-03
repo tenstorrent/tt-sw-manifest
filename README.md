@@ -40,7 +40,7 @@ Each HW test script prints a **version banner** at the start (golden pins + what
 | **`golden-smi-reset-stress.sh`** | Test | HW only | Runs **`tt-smi -r`** (PCI reset all devices) **10×** using installer venv `tt-smi`. Stresses reset path after firmware/KMD install. |
 | **`tests/metalium-workload.py`** | Test (Python) | HW: metal unit | Opens device 0 via **ttnn**, runs a small bfloat16 tensor add. Copied from tt-installer’s metalium workload pattern. |
 | **`golden-metal-unit-test.sh`** | Script | HW: metal unit | Pulls **release** image `tt-metalium-ubuntu-22.04-release-amd64:<metal-version>`, `docker run --privileged` with `/dev/tenstorrent`, hugepages, and workload mounted read-only; entrypoint `python3 /metalium-workload.py`. Enabled on all boards in `golden-metal-boards.json`. |
-| **`golden-metal-upstream.sh`** | Test | HW: metal upstream | Pulls **`upstream-tests-bh:<metal-upstream-tag>`** when set; on p150b runs single-PCIe test suites from `golden-metal-boards.json` (not full `blackhole_no_models`, which includes multi-chip UMD/eth tests). **Skipped on n150** or when `metal-upstream-tag` is unset. |
+| **`golden-metal-upstream.sh`** | Test | HW: metal upstream | Pulls **`upstream-tests-bh:<metal-upstream-tag>`** when set, runs `run_upstream_tests_vanilla.sh` on p150b (`blackhole_no_models`). **Skipped on n150** or when `metal-upstream-tag` is unset (no release tag on upstream image). Optional patches (e.g. determinism on p150b). |
 | **`activate-installer-python.sh`** | Helper | (sourced) | Resolves installer venv (`VENV_DIR`, `/tmp/tenstorrent-installer-venv.path`, or `/root/.tenstorrent-venv`) and prepends `bin` to `PATH` so **`sudo` steps still use installer `tt-smi`**. |
 | **`golden-echo-test-versions.sh`** | Helper | (sourced) | Prints test banners and golden pin summary before each step. |
 | **`golden-metal-images.sh`** | Helper | (sourced) | Builds GHCR refs from `metal-version` (normalizes `v` prefix). |
@@ -62,7 +62,7 @@ To enable upstream, set `metal-upstream-tag` to a tag that exists on GHCR (list 
 | Runner label | Metal unit | Metal upstream |
 |--------------|------------|----------------|
 | `tt-ubuntu-2204-n150-stable` | Yes | No (skip: BH upstream only) |
-| `tt-ubuntu-2204-p150b-stable` | Yes | Yes — single-PCIe suites only (skips UMD `TestCluster.GetEthernetFirmware` on one card) |
+| `tt-ubuntu-2204-p150b-stable` | Yes | Yes — `blackhole_no_models` |
 
 Config: `.github/golden-metal-boards.json`.
 

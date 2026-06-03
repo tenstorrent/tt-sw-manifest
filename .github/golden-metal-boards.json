@@ -10,11 +10,6 @@
     "metal-unit-test": true,
     "metal-upstream": true,
     "metal-target": "blackhole_no_models",
-    "upstream-patches": ["determinism"],
-    "upstream-test-suites": [
-      "test_suite_bh_pcie_didt_tests",
-      "test_suite_bh_single_pcie_python_unit_tests",
-      "test_suite_bh_single_pcie_metal_unit_tests"
-    ]
+    "upstream-patches": ["determinism"]
   }
 ]
