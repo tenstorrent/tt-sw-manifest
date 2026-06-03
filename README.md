@@ -7,21 +7,39 @@ Golden version pins (`golden.json`) and CI that mirrors a **customer install**: 
 | Job | Runners | Flow |
 |-----|---------|------|
 | **No hardware** | `ubuntu-latest` (container) | `golden-install.sh` → `verify-golden-versions.sh` |
-| **Hardware** | `tt-ubuntu-2204-n150-stable`, `tt-ubuntu-2204-p150b-stable` | `golden-install-hw.sh` → version verify → `tt-smi -r` ×10 → **tt-metalium workload** |
+| **Hardware** | `tt-ubuntu-2204-n150-stable`, `tt-ubuntu-2204-p150b-stable` | install → verify → `tt-smi -r` ×10 → **metal unit test** → **metal upstream** (p150b only) |
 
-Hardware jobs do **not** re-run the installer or pull separate `upstream-tests-bh` images. Metal coverage follows [tt-installer `test-hosted-n150.yml`](https://github.com/tenstorrent/tt-installer/blob/main/.github/workflows/test-hosted-n150.yml): a small `ttnn` smoke test inside the **tt-metalium release** container the installer already pulled.
+Each HW test step prints a **version banner** at the start (golden pins + what it is about to run).
+
+## Who pulls which container image?
+
+One pin: **`metal-version`** (e.g. `v0.71.2`). Scripts build both GHCR refs in `golden-metal-images.sh`:
+
+| Image | Pulled by |
+|-------|-----------|
+| `tt-metalium-ubuntu-22.04-release-amd64:<metal-version>` | **tt-installer** + metal unit test |
+| `upstream-tests-bh:<metal-version>` | **golden-install-hw.sh** only (not installer) |
+
+If `upstream-tests-bh` is not published at that tag yet, CI may fail on the upstream step until GHCR catches up.
+
+### Metal tests
+
+| Step | What it validates |
+|------|-------------------|
+| **Metal unit test** | Customer release container + `ttnn` smoke (`tests/metalium-workload.py`) |
+| **Metal upstream** | `run_upstream_tests_vanilla.sh` on p150b (`blackhole_no_models`). Skipped on n150. |
 
 ## Pins (`golden.json`)
 
 | Field | Role |
 |-------|------|
 | `installer`, `kmd`, `smi`, `flash`, `firmware` | Passed to tt-installer |
-| `metalium-image-tag` | GHCR tag for `tt-metalium-ubuntu-22.04-release-amd64` (must include leading **`v`**, e.g. `v0.71.2`; bare `0.71.2` is not on the registry) |
+| `metal-version` | tt-metal release (both container images derive from this tag) |
 
-## Runner labels vs instance names
+## Runner labels
 
-GitHub Actions sets `GITHUB_RUNNER_NAME` to the **ephemeral** name (e.g. `tt-ubuntu-2204-n150-stable-d7m7v-runner-9swlw`). The workflow matrix label (`tt-ubuntu-2204-n150-stable`) is passed as `GOLDEN_RUNNER_LABEL` for board lookup in `.github/golden-metal-boards.json`. tt-installer avoids this by using a single `runs-on:` label with no board JSON.
+Use `GOLDEN_RUNNER_LABEL` from the workflow matrix. Board config: `.github/golden-metal-boards.json`.
 
 ## Logs
 
-Self-hosted runners may print `sudo: unable to resolve host ubuntu` — harmless; see comment in `.github/workflows/golden-hw.yml`.
+Self-hosted runners may print `sudo: unable to resolve host ubuntu` — harmless; see `.github/workflows/golden-hw.yml`.

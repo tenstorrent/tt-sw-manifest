@@ -17,6 +17,18 @@ fi
 
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/activate-installer-python.sh"
+# shellcheck source=golden-echo-test-versions.sh
+source "${SCRIPT_DIR}/golden-echo-test-versions.sh"
+# shellcheck source=golden-metal-images.sh
+source "${SCRIPT_DIR}/golden-metal-images.sh"
+
+golden_echo_test_banner "Verify installed vs golden.json"
+golden_echo_golden_json_pins "${GOLDEN_JSON}"
+echo "running:"
+echo "  metal-version: $(read_golden_metal_version "${GOLDEN_JSON}")"
+echo "  release image: $(resolve_metalium_release_image "${GOLDEN_JSON}")"
+echo "  upstream image: $(resolve_metal_upstream_image "${GOLDEN_JSON}")"
+echo ""
 
 normalize_ver() {
   # Drop leading v and Debian/RPM revision suffix (e.g. 2.8.0-1 -> 2.8.0).

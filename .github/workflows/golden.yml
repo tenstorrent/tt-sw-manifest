@@ -36,5 +36,5 @@ jobs:
     uses: ./.github/workflows/golden-no-hw.yml
 
   hw-integration:
-    name: Hardware — install, smi reset stress, metalium workload (n150 / p150)
+    name: Hardware — install, smi stress, metal unit + upstream (n150 / p150)
     uses: ./.github/workflows/golden-hw.yml

@@ -75,15 +75,15 @@
     },
     {
       "customType": "regex",
-      "description": "metalium-image-tag (tt-metal)",
+      "description": "metal-version (tt-metal — release + upstream-tests-bh container tags)",
       "managerFilePatterns": [
         "/golden\\.json$/"
       ],
       "matchStrings": [
-        "\"metalium-image-tag\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+        "\"metal-version\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "datasourceTemplate": "github-releases",
-      "depNameTemplate": "metalium-image-tag",
+      "depNameTemplate": "metal-version",
       "packageNameTemplate": "tenstorrent/tt-metal",
       "versioningTemplate": "semver"
     },
@@ -128,9 +128,9 @@
       "allowedVersions": "/^19\\.[0-9]+\\.[0-9]+$/"
     },
     {
-      "description": "Metalium: GHCR tags are v-prefixed (e.g. v0.71.2 on tt-metalium-ubuntu-22.04-release-amd64)",
+      "description": "Metal GHCR tags are v-prefixed (e.g. v0.71.2); image repos are in golden-metal-images.sh",
       "matchDepNames": [
-        "metalium-image-tag"
+        "metal-version"
       ],
       "allowedVersions": "/^v0\\.[0-9]+\\.[0-9]+$/"
     },

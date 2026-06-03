@@ -1,10 +1,15 @@
 [
   {
     "runner-label": "tt-ubuntu-2204-n150-stable",
-    "test": "metalium-workload"
+    "metal-unit-test": true,
+    "metal-upstream": false,
+    "upstream-skip-reason": "Wormhole n150: upstream-tests-bh targets Blackhole topologies only."
   },
   {
     "runner-label": "tt-ubuntu-2204-p150b-stable",
-    "test": "metalium-workload"
+    "metal-unit-test": true,
+    "metal-upstream": true,
+    "metal-target": "blackhole_no_models",
+    "upstream-patches": ["determinism"]
   }
 ]
