@@ -1,0 +1,12 @@
+[
+  {
+    "runner": "tt-ubuntu-2204-p150b-stable",
+    "metal-target": "blackhole_no_models",
+    "patches": ["determinism"]
+  },
+  {
+    "runner": "tt-ubuntu-2204-n150-stable",
+    "skip": true,
+    "skip-reason": "Wormhole n150: upstream metal suites in tt-system-firmware target Blackhole boards only."
+  }
+]

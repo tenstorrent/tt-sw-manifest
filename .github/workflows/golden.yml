@@ -17,6 +17,7 @@ on:
       - golden.json
       - .github/workflows/golden*.yml
       - .github/scripts/**
+      - .github/golden-metal-boards.json
   workflow_dispatch:
     inputs:
       reason:
@@ -33,6 +34,6 @@ jobs:
     name: No hardware — install & verify versions
     uses: ./.github/workflows/golden-no-hw.yml
 
-  hw-smi-reset-stress:
-    name: Hardware — tt-smi PCI reset stress (n150 / p150)
+  hw-integration:
+    name: Hardware — install, smi reset stress, metal upstream (n150 / p150)
     uses: ./.github/workflows/golden-hw.yml

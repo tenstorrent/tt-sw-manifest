@@ -1,10 +1,11 @@
-# Reusable workflow: install golden stack on self-hosted runners and stress-test tt-smi reset.
+# Reusable workflow: install golden stack on self-hosted runners, verify versions,
+# stress-test tt-smi reset, and run metal upstream tests (no in-job re-install).
 # Runners and markers mirror tenstorrent/tt-smi/.github/workflows/test.yml (test-hardware job).
 #
 # Self-hosted runners often log "sudo: unable to resolve host ubuntu" on every sudo call when
 # the machine hostname (ubuntu) is not in /etc/hosts. That warning is harmless; steps still pass.
 # To silence it on a runner: echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts
-name: Golden — hardware (tt-smi reset stress)
+name: Golden — hardware (smi + metal)
 run-name: Golden hw · ${{ github.event_name }}
 
 on:
@@ -15,8 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  smi-reset-stress:
-    name: tt-smi reset stress (${{ matrix.runner }})
+  golden-hw-integration:
+    name: Golden hw (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -48,3 +49,10 @@ jobs:
           VENV_DIR: /root/.tenstorrent-venv
           NUM_RESETS: "10"
         run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" bash .github/scripts/golden-smi-reset-stress.sh
+
+      - name: Metal upstream tests (installer image, no re-flash)
+        timeout-minutes: 120
+        env:
+          GOLDEN_JSON: ${{ github.workspace }}/golden.json
+          RUNNER_NAME: ${{ matrix.runner }}
+        run: sudo -E env GOLDEN_JSON="${GOLDEN_JSON}" RUNNER_NAME="${RUNNER_NAME}" bash .github/scripts/golden-metal-upstream.sh
