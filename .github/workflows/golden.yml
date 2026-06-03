@@ -18,6 +18,7 @@ on:
       - .github/workflows/golden*.yml
       - .github/scripts/**
       - .github/golden-metal-boards.json
+      - tests/metalium-workload.py
   workflow_dispatch:
     inputs:
       reason:
@@ -35,5 +36,5 @@ jobs:
     uses: ./.github/workflows/golden-no-hw.yml
 
   hw-integration:
-    name: Hardware — install, smi reset stress, metal upstream (n150 / p150)
+    name: Hardware — install, smi reset stress, metalium workload (n150 / p150)
     uses: ./.github/workflows/golden-hw.yml

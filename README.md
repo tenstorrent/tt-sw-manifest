@@ -7,25 +7,20 @@ Golden version pins (`golden.json`) and CI that mirrors a **customer install**: 
 | Job | Runners | Flow |
 |-----|---------|------|
 | **No hardware** | `ubuntu-latest` (container) | `golden-install.sh` → `verify-golden-versions.sh` |
-| **Hardware** | `tt-ubuntu-2204-n150-stable`, `tt-ubuntu-2204-p150b-stable` | `golden-install-hw.sh` (KMD, firmware, tt-smi, tt-flash, **tt-metalium** container) → version verify → `tt-smi -r` ×10 → **metal upstream** tests |
+| **Hardware** | `tt-ubuntu-2204-n150-stable`, `tt-ubuntu-2204-p150b-stable` | `golden-install-hw.sh` → version verify → `tt-smi -r` ×10 → **tt-metalium workload** |
 
-Hardware jobs do **not** rebuild firmware or re-run tt-installer in later steps. Metal upstream tests are adapted from [tt-system-firmware `metal.yml`](https://github.com/tenstorrent/tt-system-firmware/blob/main/.github/workflows/metal.yml) but skip artifact flash / KMD swap; they use the image recorded at install time (`metal-upstream-image` in `golden.json`).
+Hardware jobs do **not** re-run the installer or pull separate `upstream-tests-bh` images. Metal coverage follows [tt-installer `test-hosted-n150.yml`](https://github.com/tenstorrent/tt-installer/blob/main/.github/workflows/test-hosted-n150.yml): a small `ttnn` smoke test inside the **tt-metalium release** container the installer already pulled.
 
 ## Pins (`golden.json`)
 
 | Field | Role |
 |-------|------|
 | `installer`, `kmd`, `smi`, `flash`, `firmware` | Passed to tt-installer |
-| `metalium-image-tag` | `tt-metalium` release container tag (installer) |
-| `metal-upstream-image` | tt-metal `upstream-tests-bh` image for pytest/C++ upstream suites |
+| `metalium-image-tag` | GHCR tag for `tt-metalium-ubuntu-22.04-release-amd64` (must include leading **`v`**, e.g. `v0.71.2`; bare `0.71.2` is not on the registry) |
 
-## Metal upstream on hardware
+## Runner labels vs instance names
 
-- Board → runner mapping: `.github/golden-metal-boards.json`
-- **p150b**: `blackhole_no_models` (no HF weights; matches syseng runners)
-- **n150**: skipped (Wormhole; BH upstream suites do not apply)
-
-To add Llama / multi-device targets, extend `golden-metal-boards.json` and mount model paths like tt-system-firmware does.
+GitHub Actions sets `GITHUB_RUNNER_NAME` to the **ephemeral** name (e.g. `tt-ubuntu-2204-n150-stable-d7m7v-runner-9swlw`). The workflow matrix label (`tt-ubuntu-2204-n150-stable`) is passed as `GOLDEN_RUNNER_LABEL` for board lookup in `.github/golden-metal-boards.json`. tt-installer avoids this by using a single `runs-on:` label with no board JSON.
 
 ## Logs
 

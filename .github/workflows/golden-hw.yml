@@ -1,5 +1,5 @@
 # Reusable workflow: install golden stack on self-hosted runners, verify versions,
-# stress-test tt-smi reset, and run metal upstream tests (no in-job re-install).
+# stress-test tt-smi reset, and run tt-metalium container workload (no in-job re-install).
 # Runners and markers mirror tenstorrent/tt-smi/.github/workflows/test.yml (test-hardware job).
 #
 # Self-hosted runners often log "sudo: unable to resolve host ubuntu" on every sudo call when
@@ -50,9 +50,14 @@ jobs:
           NUM_RESETS: "10"
         run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" bash .github/scripts/golden-smi-reset-stress.sh
 
-      - name: Metal upstream tests (installer image, no re-flash)
-        timeout-minutes: 120
+      - name: tt-metalium container workload
+        timeout-minutes: 30
         env:
           GOLDEN_JSON: ${{ github.workspace }}/golden.json
-          RUNNER_NAME: ${{ matrix.runner }}
-        run: sudo -E env GOLDEN_JSON="${GOLDEN_JSON}" RUNNER_NAME="${RUNNER_NAME}" bash .github/scripts/golden-metal-upstream.sh
+          GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
+        run: |
+          sudo -E env \
+            GOLDEN_JSON="${GOLDEN_JSON}" \
+            GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
+            GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
+            bash .github/scripts/golden-metalium-workload.sh

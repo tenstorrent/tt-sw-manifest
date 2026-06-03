@@ -116,7 +116,6 @@
         "smi",
         "flash",
         "firmware",
-        "metalium-image-tag",
         "installer"
       ],
       "extractVersion": "^v(?<version>.*)$"
@@ -129,11 +128,11 @@
       "allowedVersions": "/^19\\.[0-9]+\\.[0-9]+$/"
     },
     {
-      "description": "Metalium: only track 0.x release tags (tt-metal container tags like v0.71.2)",
+      "description": "Metalium: GHCR tags are v-prefixed (e.g. v0.71.2 on tt-metalium-ubuntu-22.04-release-amd64)",
       "matchDepNames": [
         "metalium-image-tag"
       ],
-      "allowedVersions": "/^0\\.[0-9]+\\.[0-9]+$/"
+      "allowedVersions": "/^v0\\.[0-9]+\\.[0-9]+$/"
     },
     {
       "description": "One grouped PR for all golden.json bumps (no separate major branch)",
