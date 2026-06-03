@@ -96,6 +96,8 @@ cleanup() {
 }
 
 run_in_container() {
+  # upstream-tests-bh sets ENTRYPOINT to run_upstream_tests_vanilla.sh; override to bash
+  # so we can patch the script then invoke: run_upstream_tests_vanilla.sh <hw_topology>
   # shellcheck disable=SC2086
   "${CONTAINER_CMD}" run --rm \
     --cap-add SYS_MODULE \
@@ -107,8 +109,9 @@ run_in_container() {
     --env=HOME="${CONTAINER_WORKDIR}" \
     --workdir="${CONTAINER_WORKDIR}" \
     --network=host \
+    --entrypoint bash \
     "${METAL_IMAGE}" \
-    bash -lc "$1"
+    -lc "$1"
 }
 
 CONTAINER_SCRIPT="set -euo pipefail
