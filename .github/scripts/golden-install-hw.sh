@@ -59,7 +59,7 @@ echo "installer:   v${INSTALLER_VER} (${INSTALLER_URL})"
 echo "kmd:         ${KMD_VER}"
 echo "smi:         ${SMI_VER}"
 echo "flash:       ${FLASH_VER}"
-echo "firmware:    ${FW_VER}"
+echo "firmware:    ${FW_VER} (pinned; flash step disabled in CI)"
 echo "metal-version: ${METAL_VERSION}"
 echo "  release:   ${METALIUM_RELEASE_IMAGE} (installer)"
 if [[ -n "${METAL_UPSTREAM_TAG}" ]]; then
@@ -75,7 +75,7 @@ timeout 1800 bash /tmp/tt-install.sh \
   --mode-non-interactive \
   --install-kmd \
   --install-hugepages \
-  --update-firmware force \
+  --update-firmware off \
   --install-metalium-container \
   --no-install-metalium-models-container \
   --no-install-forge-container \

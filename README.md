@@ -10,7 +10,7 @@ Both jobs start from the same pins in `golden.json`. [tt-installer](https://gith
 |----------------------------|---------------------|
 | `tenstorrent-dkms` (KMD) | Host driver for all HW tests |
 | Python venv at `~/.tenstorrent-venv` (`--python-choice new-venv`) | `tt-smi`, `tt-flash` via `activate-installer-python.sh` |
-| Firmware flash (HW only, `--update-firmware force`) | Device firmware before smi/metal |
+| Firmware pin in `golden.json` (flash **off** in CI, same as no-hw) | Runners keep existing device firmware |
 | Hugepages (`--install-hugepages` via tenstorrent-tools) | Host `/dev/hugepages-1G` for metal unit + upstream containers |
 | `~/.local/bin/tt-metalium` + release container pull (HW only) | Metal unit test image |
 | Docker/Podman (`--install-container-runtime`) | Metal unit + upstream containers |
@@ -28,6 +28,8 @@ Both jobs start from the same pins in `golden.json`. [tt-installer](https://gith
 
 Orchestrator: `.github/workflows/golden.yml` (push to `main` / `renovate/**`, PRs touching golden files, `workflow_dispatch`).
 
+**When jobs run:** push and PR only run the **no-hardware** install + verify job. Hardware (n150 / p150b) runs only when you start **Golden** via **Actions → Run workflow** and enable **Run hardware tests on self-hosted runners**. You can also run **Golden — hardware** directly as its own workflow.
+
 Each HW test script prints a **version banner** at the start (golden pins + what it is about to run) via `golden-echo-test-versions.sh`.
 
 ## Tests and scripts
@@ -35,9 +37,9 @@ Each HW test script prints a **version banner** at the start (golden pins + what
 | Name | Type | CI step | What it does |
 |------|------|---------|--------------|
 | **`golden-install.sh`** | Script | No-hw: install | Downloads tt-installer `install.sh`, installs KMD + `tt-smi` / `tt-flash` into a new venv. Firmware flash **off**, metalium container **off**, no container runtime. Records venv path in `/tmp/tenstorrent-installer-venv.path`. |
-| **`golden-install-hw.sh`** | Script | HW: install | Same installer flow on a self-hosted runner as **root**: KMD, venv, **`--update-firmware force`**, metalium release container (`--metalium-image-tag` from `metal-version`). Also **pulls** `upstream-tests-bh` (not done by installer) for the upstream step. |
+| **`golden-install-hw.sh`** | Script | HW: install | Same installer flow on a self-hosted runner as **root**: KMD, venv, firmware flash **off**, metalium release container (`--metalium-image-tag` from `metal-version`). Also **pulls** `upstream-tests-bh` (not done by installer) for the upstream step. |
 | **`verify-golden-versions.sh`** | Test | Both jobs | Sources installer venv; prints version table; checks installed `installer` / `kmd` / `smi` / `flash` match `golden.json`; runs `tt-smi` and `tt-flash` **smoke** (`-v` version match, `-h` help output). |
-| **`golden-smi-reset-stress.sh`** | Test | HW only | Runs **`tt-smi -r`** (PCI reset all devices) **10×** using installer venv `tt-smi`. Stresses reset path after firmware/KMD install. |
+| **`golden-smi-reset-stress.sh`** | Test | HW only | Runs **`tt-smi -r`** (PCI reset all devices) **10×** using installer venv `tt-smi`. Stresses reset path after KMD install. |
 | **`tests/metalium-workload.py`** | Test (Python) | HW: metal unit | Opens device 0 via **ttnn**, runs a small bfloat16 tensor add. Copied from tt-installer’s metalium workload pattern. |
 | **`golden-metal-unit-test.sh`** | Script | HW: metal unit | Pulls **release** image `tt-metalium-ubuntu-22.04-release-amd64:<metal-version>`, `docker run --privileged` with `/dev/tenstorrent`, hugepages, and workload mounted read-only; entrypoint `python3 /metalium-workload.py`. Enabled on all boards in `golden-metal-boards.json`. |
 | **`golden-metal-upstream.sh`** | Test | HW: metal upstream | Pulls **`upstream-tests-bh:<metal-upstream-tag>`** when set, runs `run_upstream_tests_vanilla.sh` on p150b (`blackhole_no_models`). **Skipped on n150** or when `metal-upstream-tag` is unset (no release tag on upstream image). Optional patches (e.g. determinism on p150b). |

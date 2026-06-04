@@ -4,7 +4,8 @@
 #   - ../tt-installer/.github/workflows/test-debian-ubuntu.yml (installer in container)
 #   - ../tt-smi/.github/workflows/test.yml (split no-hw vs hardware; hardware TBD)
 name: Golden
-run-name: Golden · ${{ github.event_name }}
+run-name: >-
+  Golden · ${{ github.event_name }}${{ github.event_name == 'workflow_dispatch' && inputs.run_hardware_tests && ' · HW' || '' }}
 
 on:
   push:
@@ -21,6 +22,11 @@ on:
       - tests/metalium-workload.py
   workflow_dispatch:
     inputs:
+      run_hardware_tests:
+        description: Run hardware tests on self-hosted runners (n150 / p150b)
+        required: false
+        type: boolean
+        default: false
       reason:
         description: Why you are running this workflow (optional)
         required: false
@@ -37,4 +43,5 @@ jobs:
 
   hw-integration:
     name: Hardware — install, smi stress, metal unit + upstream (n150 / p150)
+    if: github.event_name == 'workflow_dispatch' && inputs.run_hardware_tests
     uses: ./.github/workflows/golden-hw.yml
