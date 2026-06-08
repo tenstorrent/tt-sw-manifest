@@ -28,15 +28,7 @@ Both jobs start from the same pins in `golden.json`. [tt-installer](https://gith
 
 Orchestrator: `.github/workflows/golden.yml` (push to `main` / `renovate/**`, PRs touching golden files, `workflow_dispatch`).
 
-**When jobs run:**
-
-| Trigger | No-hw | Hardware (n150 / p150b) |
-|---------|-------|-------------------------|
-| Push / PR (normal) | Yes | No |
-| **Renovate PR** (`renovate/*` branch) | Yes | **Yes** — full Golden HW on the PR |
-| **Golden** manual run + **Run hardware tests** | Yes | Yes |
-
-**Renovate (PAT, not the Mend app):** **Actions → Renovate → Run workflow** (optional **dry run**). Uses `renovate.json` and repo secret **`RENOVATE_TOKEN`** — your org-approved **fine-grained PAT** scoped **only** to `ttis-golden-versions`. Renovate needs these **repository** permissions: **Contents**, **Pull requests**, **Issues**, **Workflows**, **Commit statuses** (read + write); **Dependabot alerts** (read); **Administration** (read). Optional **organization** permission: **Members** (read). Resource owner must be **tenstorrent** (not a personal account). The workflow **Verify PAT** step runs Renovate’s GraphQL query and prints exactly which permission is missing if the token is incomplete. Renovate opens or updates a grouped PR (`renovate/golden-versions`); **Golden** runs on that PR with hardware. Also scheduled daily at 01:00 UTC unless you remove the `schedule` block in `renovate.yml`.
+**When jobs run:** push and PR only run the **no-hardware** install + verify job. Hardware (n150 / p150b) runs only when you start **Golden** via **Actions → Run workflow** and enable **Run hardware tests on self-hosted runners**. You can also run **Golden — hardware** directly as its own workflow.
 
 Each HW test script prints a **version banner** at the start (golden pins + what it is about to run) via `golden-echo-test-versions.sh`.
 
