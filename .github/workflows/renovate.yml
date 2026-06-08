@@ -1,8 +1,9 @@
 # Run Renovate with your org-approved fine-grained PAT (not the Mend Renovate GitHub App).
 # Opens/updates PRs from renovate.json; Golden runs no-hw + HW on those PRs.
 #
-# One-time setup: Settings → Secrets → Actions → RENOVATE_TOKEN (fine-grained PAT,
-# Contents + Pull requests write, only ttis-golden-versions).
+# One-time setup: Settings → Secrets → Actions → RENOVATE_TOKEN (org-approved fine-grained PAT).
+# Required repo permissions: Contents, Pull requests, Issues, Workflows, Commit statuses (all RW).
+# Optional org permission: Members (read). Repository access: only ttis-golden-versions.
 name: Renovate
 
 on:
@@ -28,21 +29,49 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify PAT can access this repository
+        env:
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RENOVATE_TOKEN}" ]]; then
+            echo "::error::RENOVATE_TOKEN secret is not set. Add your fine-grained PAT under Settings → Secrets → Actions."
+            exit 1
+          fi
+          http_code="$(curl -sS -o /tmp/repo.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${RENOVATE_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}")"
+          if [[ "${http_code}" != "200" ]]; then
+            echo "::error::PAT cannot read ${GITHUB_REPOSITORY} (HTTP ${http_code})."
+            echo "Ensure the token resource owner is tenstorrent, repo access is ttis-golden-versions only, and org SSO is authorized."
+            cat /tmp/repo.json
+            exit 1
+          fi
+          echo "PAT OK for $(jq -r .full_name /tmp/repo.json)"
+
       - name: Run Renovate (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
         uses: renovatebot/github-action@v44.2.0
         env:
+          RENOVATE_PLATFORM: github
           RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ALLOWED_REPOS: ${{ github.repository }}
         with:
           configurationFile: renovate.json
           token: ${{ secrets.RENOVATE_TOKEN }}
+          renovate-version: full
           renovate-args: --dry-run=full
 
       - name: Run Renovate
         if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
         uses: renovatebot/github-action@v44.2.0
         env:
+          RENOVATE_PLATFORM: github
           RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ALLOWED_REPOS: ${{ github.repository }}
         with:
           configurationFile: renovate.json
           token: ${{ secrets.RENOVATE_TOKEN }}
+          renovate-version: full
