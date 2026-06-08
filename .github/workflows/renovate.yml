@@ -2,7 +2,8 @@
 # Opens/updates PRs from renovate.json; Golden runs no-hw + HW on those PRs.
 #
 # One-time setup: Settings → Secrets → Actions → RENOVATE_TOKEN (org-approved fine-grained PAT).
-# Required repo permissions: Contents, Pull requests, Issues, Workflows, Commit statuses (all RW).
+# Required repo permissions (read + write unless noted): Contents, Pull requests, Issues,
+# Workflows, Commit statuses; Dependabot alerts (read); Administration (read).
 # Optional org permission: Members (read). Repository access: only ttis-golden-versions.
 name: Renovate
 
@@ -29,7 +30,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify PAT can access this repository
+      - name: Verify PAT (REST + GraphQL — same checks Renovate uses)
         env:
           RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
         run: |
@@ -38,6 +39,10 @@ jobs:
             echo "::error::RENOVATE_TOKEN secret is not set. Add your fine-grained PAT under Settings → Secrets → Actions."
             exit 1
           fi
+
+          owner="${GITHUB_REPOSITORY%%/*}"
+          name="${GITHUB_REPOSITORY#*/}"
+
           http_code="$(curl -sS -o /tmp/repo.json -w '%{http_code}' \
             -H "Authorization: Bearer ${RENOVATE_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
@@ -45,11 +50,68 @@ jobs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}")"
           if [[ "${http_code}" != "200" ]]; then
             echo "::error::PAT cannot read ${GITHUB_REPOSITORY} (HTTP ${http_code})."
-            echo "Ensure the token resource owner is tenstorrent, repo access is ttis-golden-versions only, and org SSO is authorized."
+            echo "Ensure resource owner is tenstorrent, repo access is ttis-golden-versions only, and org SSO is authorized."
             cat /tmp/repo.json
             exit 1
           fi
-          echo "PAT OK for $(jq -r .full_name /tmp/repo.json)"
+          echo "REST OK: $(jq -r .full_name /tmp/repo.json)"
+
+          user_json="$(curl -sS \
+            -H "Authorization: Bearer ${RENOVATE_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/user")"
+          login="$(jq -r .login <<<"${user_json}")"
+          user_id="$(jq -r .id <<<"${user_json}")"
+          if [[ -z "${login}" || "${login}" == "null" ]]; then
+            echo "::error::PAT cannot read /user. Token may be invalid or missing Metadata read."
+            echo "${user_json}"
+            exit 1
+          fi
+          echo "RENOVATE_GIT_AUTHOR=${login} <${user_id}+${login}@users.noreply.github.com>" >> "${GITHUB_ENV}"
+          echo "PAT user: ${login}"
+
+          # Mirrors renovate repoInfoQuery (graphql.ts) — partial field failures abort Renovate.
+          read -r -d '' GQL_QUERY <<'EOF' || true
+          query($owner: String!, $name: String!, $user: String) {
+            repository(owner: $owner, name: $name) {
+              id
+              isFork
+              isArchived
+              nameWithOwner
+              hasIssuesEnabled
+              hasVulnerabilityAlertsEnabled
+              autoMergeAllowed
+              mergeCommitAllowed
+              rebaseMergeAllowed
+              squashMergeAllowed
+              defaultBranchRef { name }
+              issues(
+                orderBy: { field: UPDATED_AT, direction: DESC },
+                filterBy: { createdBy: $user },
+                first: 1
+              ) { nodes { number } }
+            }
+          }
+          EOF
+
+          curl -sS -o /tmp/gql.json -X POST "https://api.github.com/graphql" \
+            -H "Authorization: Bearer ${RENOVATE_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg query "${GQL_QUERY}" \
+              --arg owner "${owner}" \
+              --arg name "${name}" \
+              --arg user "${login}" \
+              '{query: $query, variables: {owner: $owner, name: $name, user: $user}}')"
+
+          if jq -e '.errors | length > 0' /tmp/gql.json >/dev/null 2>&1; then
+            echo "::error::PAT failed Renovate's GraphQL repo query. Add the missing permissions on your fine-grained token:"
+            jq -r '.errors[] | "  - path=\(.path | join(".")): \(.message) (type=\(.type // "unknown"))"' /tmp/gql.json
+            echo "Common fixes: Issues (RW), Dependabot alerts (read), Administration (read), Workflows (RW)."
+            exit 1
+          fi
+          echo "GraphQL OK: default branch=$(jq -r '.data.repository.defaultBranchRef.name' /tmp/gql.json)"
 
       - name: Run Renovate (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
@@ -58,6 +120,7 @@ jobs:
           RENOVATE_PLATFORM: github
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_ALLOWED_REPOS: ${{ github.repository }}
+          LOG_LEVEL: debug
         with:
           configurationFile: renovate.json
           token: ${{ secrets.RENOVATE_TOKEN }}
@@ -71,6 +134,7 @@ jobs:
           RENOVATE_PLATFORM: github
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_ALLOWED_REPOS: ${{ github.repository }}
+          LOG_LEVEL: debug
         with:
           configurationFile: renovate.json
           token: ${{ secrets.RENOVATE_TOKEN }}

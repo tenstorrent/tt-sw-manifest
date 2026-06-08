@@ -5,6 +5,7 @@
   ],
   "description": "Golden.json bumps from Tenstorrent GitHub releases. Merge only after the Golden workflow is green.",
   "branchPrefix": "renovate/",
+  "dependencyDashboard": false,
   "timezone": "America/Toronto",
   "labels": [
     "dependencies",
