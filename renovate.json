@@ -4,6 +4,10 @@
     "config:recommended"
   ],
   "description": "Golden.json bumps from Tenstorrent GitHub releases. Merge only after the Golden workflow is green.",
+  "allowedRepositories": [
+    "tenstorrent/ttis-golden-versions"
+  ],
+  "branchPrefix": "renovate/",
   "timezone": "America/Toronto",
   "labels": [
     "dependencies",

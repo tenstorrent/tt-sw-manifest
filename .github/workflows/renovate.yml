@@ -1,0 +1,48 @@
+# Run Renovate with your org-approved fine-grained PAT (not the Mend Renovate GitHub App).
+# Opens/updates PRs from renovate.json; Golden runs no-hw + HW on those PRs.
+#
+# One-time setup: Settings → Secrets → Actions → RENOVATE_TOKEN (fine-grained PAT,
+# Contents + Pull requests write, only ttis-golden-versions).
+name: Renovate
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Log only — do not open or update PRs
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 1 * * *" # Daily 01:00 UTC (optional; disable by deleting this block)
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Renovate (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        uses: renovatebot/github-action@v44.2.0
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+        with:
+          configurationFile: renovate.json
+          token: ${{ secrets.RENOVATE_TOKEN }}
+          renovate-args: --dry-run=full
+
+      - name: Run Renovate
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
+        uses: renovatebot/github-action@v44.2.0
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+        with:
+          configurationFile: renovate.json
+          token: ${{ secrets.RENOVATE_TOKEN }}

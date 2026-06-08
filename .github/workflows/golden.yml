@@ -5,7 +5,10 @@
 #   - ../tt-smi/.github/workflows/test.yml (split no-hw vs hardware; hardware TBD)
 name: Golden
 run-name: >-
-  Golden · ${{ github.event_name }}${{ github.event_name == 'workflow_dispatch' && inputs.run_hardware_tests && ' · HW' || '' }}
+  Golden · ${{ github.event_name }}${{
+    (github.event_name == 'workflow_dispatch' && inputs.run_hardware_tests) ||
+    (github.event_name == 'pull_request' && startsWith(github.head_ref, 'renovate/'))
+    && ' · HW' || '' }}
 
 on:
   push:
@@ -17,6 +20,7 @@ on:
     paths:
       - golden.json
       - .github/workflows/golden*.yml
+      - .github/workflows/renovate.yml
       - .github/scripts/**
       - .github/golden-metal-boards.json
       - tests/metalium-workload.py
@@ -43,5 +47,7 @@ jobs:
 
   hw-integration:
     name: Hardware — install, smi stress, metal unit + upstream (n150 / p150)
-    if: github.event_name == 'workflow_dispatch' && inputs.run_hardware_tests
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.run_hardware_tests) ||
+      (github.event_name == 'pull_request' && startsWith(github.head_ref, 'renovate/'))
     uses: ./.github/workflows/golden-hw.yml
