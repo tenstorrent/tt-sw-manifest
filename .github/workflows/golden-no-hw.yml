@@ -1,11 +1,26 @@
-# Reusable workflow: install stack from golden.json via tt-installer (no device required).
+# Install stack from golden.json via tt-installer (no device required).
 # Pattern follows tenstorrent/tt-installer/.github/workflows/test-debian-ubuntu.yml
-name: Golden — install & verify (no hardware)
+name: Golden — no hardware
 run-name: Golden no-hw · ${{ github.event_name }}
 
 on:
-  workflow_call:
+  push:
+    branches:
+      - main
+      - renovate/**
+  pull_request:
+    paths:
+      - golden.json
+      - .github/workflows/golden-no-hw.yml
+      - .github/workflows/golden-hw.yml
+      - .github/workflows/renovate.yml
+      - .github/scripts/**
+      - tests/metalium-workload.py
   workflow_dispatch:
+
+concurrency:
+  group: golden-no-hw-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   install-and-verify:
@@ -43,6 +58,6 @@ jobs:
                 export GOLDEN_JSON=/home/testuser/workspace/golden.json
 
                 bash .github/scripts/golden-install.sh
-                bash .github/scripts/verify-golden-versions.sh
+                bash .github/scripts/verify-versions.sh
               '
             "

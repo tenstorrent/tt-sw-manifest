@@ -1,51 +1,73 @@
 #!/usr/bin/env bash
-# Metal upstream tests: tt-system-firmware metal.yml style (upstream-tests-bh image).
-# Uses installer KMD/firmware on host — no re-flash or KMD swap in this step.
+# Metal upstream tests: upstream-tests-bh image (host KMD/firmware — no re-flash in this step).
+# Not currently run in CI. When re-enabled, set METAL_TARGET (default: blackhole_no_models).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 GOLDEN_JSON="${GOLDEN_JSON:-${REPO_ROOT}/golden.json}"
-GOLDEN_METAL_BOARDS_JSON="${BOARDS_JSON:-${REPO_ROOT}/.github/golden-metal-boards.json}"
+RUNNER_LABEL="${GOLDEN_RUNNER_LABEL:-${GITHUB_RUNNER_NAME:-}}"
 
 UPSTREAM_SCRIPT="dockerfile/upstream_test_images/run_upstream_tests_vanilla.sh"
 CONTAINER_WORKDIR="/home/user/tt-metal"
+METAL_TARGET="${METAL_TARGET:-blackhole_no_models}"
+PATCHES="${METAL_UPSTREAM_PATCHES:-}"
 
-# shellcheck source=golden-metal-images.sh
-source "${SCRIPT_DIR}/golden-metal-images.sh"
-# shellcheck source=golden-metal-board.sh
-source "${SCRIPT_DIR}/golden-metal-board.sh"
-# shellcheck source=golden-echo-test-versions.sh
-source "${SCRIPT_DIR}/golden-echo-test-versions.sh"
-# shellcheck source=golden-check-hugepages.sh
-source "${SCRIPT_DIR}/golden-check-hugepages.sh"
+readonly GOLDEN_METAL_UPSTREAM_REPO="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh"
+
+normalize_metal_image_tag() {
+  local tag="${1:?}"
+  case "${tag}" in
+    latest-rc | latest) printf '%s\n' "${tag}" ;;
+    v*) printf '%s\n' "${tag}" ;;
+    *) printf 'v%s\n' "${tag}" ;;
+  esac
+}
+
+read_golden_metal_version() {
+  jq -r '.["metal-version"] // .["metalium-image-tag"] // empty' "${GOLDEN_JSON}"
+}
+
+read_golden_metal_upstream_tag() {
+  jq -r '.["metal-upstream-tag"] // empty' "${GOLDEN_JSON}"
+}
+
+metal_upstream_image_ref() {
+  printf '%s:%s\n' "${GOLDEN_METAL_UPSTREAM_REPO}" "$(normalize_metal_image_tag "$1")"
+}
+
+resolve_metal_upstream_image() {
+  local tag
+  tag="$(read_golden_metal_upstream_tag)"
+  if [[ -z "${tag}" ]]; then
+    echo "metal-upstream-tag is not set in golden.json" >&2
+    return 1
+  fi
+  metal_upstream_image_ref "${tag}"
+}
+
+golden_check_hugepages() {
+  if [[ -d /dev/hugepages-1G ]] || [[ -d /dev/hugepages ]]; then
+    return 0
+  fi
+  echo "FAIL: host hugepages are not configured (/dev/hugepages-1G and /dev/hugepages missing)." >&2
+  echo "  Run golden-install.sh --hw (uses --install-hugepages)." >&2
+  return 1
+}
 
 if [[ ! -f "${GOLDEN_JSON}" ]]; then
   echo "golden.json not found at ${GOLDEN_JSON}" >&2
   exit 1
 fi
-
-golden_metal_require_board
-
-if [[ "$(golden_metal_board_bool metal-upstream false)" != "true" ]]; then
-  echo "SKIP: $(jq -r '.["upstream-skip-reason"] // "metal upstream not configured for this runner"' <<<"${GOLDEN_METAL_BOARD}")"
-  exit 0
-fi
-
-if ! golden_metal_upstream_enabled "${GOLDEN_JSON}"; then
-  echo "SKIP: metal-upstream-tag is not set in golden.json."
-  echo "  upstream-tests-bh is published as CI dev tags (e.g. v0.71.0-dev20260516-2-g…), not release tags."
-  echo "  metal-version ($(read_golden_metal_version "${GOLDEN_JSON}")) applies to tt-metalium release only."
-  echo "  To run upstream on p150b, pin an existing tag: ghcr.io/tenstorrent/tt-metal/upstream-tests-bh:<tag>"
-  exit 0
-fi
-
-METAL_TARGET="$(jq -r '.["metal-target"] // empty' <<<"${GOLDEN_METAL_BOARD}")"
-if [[ -z "${METAL_TARGET}" || "${METAL_TARGET}" == "null" ]]; then
-  echo "metal-target is required when metal-upstream is enabled" >&2
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required" >&2
   exit 1
 fi
-PATCHES="$(jq -r '.["upstream-patches"] // [] | join(",")' <<<"${GOLDEN_METAL_BOARD}")"
+
+if [[ -z "$(read_golden_metal_upstream_tag)" ]]; then
+  echo "SKIP: metal-upstream-tag is not set in golden.json."
+  exit 0
+fi
 
 golden_check_hugepages
 
@@ -68,29 +90,37 @@ _resolve_upstream_image() {
     cat /tmp/tenstorrent-metal-upstream-image.path
     return 0
   fi
-  resolve_metal_upstream_image "${GOLDEN_JSON}"
+  resolve_metal_upstream_image
 }
 
 _resolve_container_cmd
-METAL_VERSION="$(read_golden_metal_version "${GOLDEN_JSON}")"
-METAL_UPSTREAM_TAG="$(read_golden_metal_upstream_tag "${GOLDEN_JSON}")"
+METAL_VERSION="$(read_golden_metal_version)"
+METAL_UPSTREAM_TAG="$(read_golden_metal_upstream_tag)"
 METAL_IMAGE="$(_resolve_upstream_image)"
 
-golden_echo_test_banner "Metal upstream tests (upstream-tests-bh)"
-golden_echo_golden_json_pins "${GOLDEN_JSON}"
+printf '\n========== Metal upstream tests (upstream-tests-bh) ==========\n'
+echo "golden.json pins:"
+jq -r '
+  "  installer:     \(.installer)",
+  "  kmd:           \(.kmd)",
+  "  smi:           \(.smi)",
+  "  flash:         \(.flash)",
+  "  firmware:      \(.firmware)",
+  "  metal-version: \(.["metal-version"] // .["metalium-image-tag"] // "n/a")",
+  "  metal-upstream-tag: \(.["metal-upstream-tag"] // "(not set)")"
+' "${GOLDEN_JSON}"
 echo "running:"
-echo "  metal-version:       ${METAL_VERSION} (release / unit test)"
-echo "  metal-upstream-tag:  ${METAL_UPSTREAM_TAG}"
-echo "  image:               ${METAL_IMAGE}"
-echo "  target:        ${METAL_TARGET}"
-echo "  runner label:  ${golden_metal_match_key}"
-echo "  instance:      ${GITHUB_RUNNER_NAME:-n/a}"
-echo "  runtime:       ${CONTAINER_CMD}"
-echo "  script:        ${UPSTREAM_SCRIPT}"
+echo "  metal-version:      ${METAL_VERSION}"
+echo "  metal-upstream-tag: ${METAL_UPSTREAM_TAG}"
+echo "  image:              ${METAL_IMAGE}"
+echo "  target:             ${METAL_TARGET}"
+echo "  runner label:       ${RUNNER_LABEL:-n/a}"
+echo "  instance:           ${GITHUB_RUNNER_NAME:-n/a}"
+echo "  runtime:            ${CONTAINER_CMD}"
+echo "  script:             ${UPSTREAM_SCRIPT}"
 
 if ! ${CONTAINER_CMD} pull "${METAL_IMAGE}"; then
   echo "FAIL: could not pull ${METAL_IMAGE}" >&2
-  echo "Check metal-upstream-tag in golden.json — tag must exist on GHCR (dev tags, not release semver)." >&2
   exit 1
 fi
 
@@ -100,8 +130,6 @@ cleanup() {
 }
 
 run_in_container() {
-  # upstream-tests-bh sets ENTRYPOINT to run_upstream_tests_vanilla.sh; override to bash
-  # so we can patch the script then invoke: run_upstream_tests_vanilla.sh <hw_topology>
   # shellcheck disable=SC2086
   "${CONTAINER_CMD}" run --rm \
     --cap-add SYS_MODULE \

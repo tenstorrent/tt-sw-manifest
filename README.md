@@ -1,101 +1,117 @@
 # ttis-golden-versions
 
-Golden version pins (`golden.json`) and CI that mirrors a **customer install**: run [tt-installer](https://github.com/tenstorrent/tt-installer) once on each runner, then exercise that stack on real hardware without re-installing or swapping KMD/firmware between test steps.
+Pinned Tenstorrent stack versions (`golden.json`) and CI that validates them the way a customer would install: run [tt-installer](https://github.com/tenstorrent/tt-installer) once, then exercise that same stack on hardware without re-flashing firmware or swapping KMD between steps.
 
-## How CI uses the installer
+## `golden.json`
 
-Both jobs start from the same pins in `golden.json`. [tt-installer](https://github.com/tenstorrent/tt-installer) `install.sh` is downloaded at the pinned `installer` version and invoked non-interactively with component versions (`kmd`, `smi`, `flash`, `firmware`, and on hardware `metal-version`).
+| Field | Passed to tt-installer / used by |
+|-------|----------------------------------|
+| `installer` | tt-installer release used to download `install.sh` |
+| `kmd` | `--kmd-version` → `tenstorrent-dkms` |
+| `smi` | `--smi-version` → `tt-smi` in installer venv |
+| `flash` | `--flash-version` → `tt-flash` in installer venv |
+| `firmware` | `--fw-version` (flash off by default in CI) |
+| `metal-version` | `--metalium-image-tag` → `tt-metalium-ubuntu-22.04-release-amd64` (HW install + ttnn unit test) |
+| `metal-upstream-tag` | `upstream-tests-bh` image tag (reserved; upstream test not in CI yet) |
 
-| What the installer sets up | Used by later steps |
-|----------------------------|---------------------|
-| `tenstorrent-dkms` (KMD) | Host driver for all HW tests |
-| Python venv at `~/.tenstorrent-venv` (`--python-choice new-venv`) | `tt-smi`, `tt-flash` via `activate-installer-python.sh` |
-| Firmware pin in `golden.json` (flash **off** in CI, same as no-hw) | Runners keep existing device firmware |
-| Hugepages (`--install-hugepages` via tenstorrent-tools) | Host `/dev/hugepages-1G` for metal unit + upstream containers |
-| `~/.local/bin/tt-metalium` + release container pull (HW only) | Metal unit test image |
-| Docker/Podman (`--install-container-runtime`) | Metal unit + upstream containers |
+[Renovate](renovate.json) opens grouped PRs when these pins change.
 
-**Customer-install model on hardware:** one root install (`golden-install-hw.sh`), then verify → smi stress → metal tests reuse the host KMD, firmware, and installer venv. Metal steps run **inside** GHCR containers but bind `/dev/tenstorrent` and hugepages from the host — they do not re-flash or replace KMD.
+## CI workflows
 
-**No-hardware job:** runs inside an `ubuntu:22.04` container as a normal user; install skips firmware flash and metalium (`golden-install.sh`), then only verifies CLI versions.
+Three workflows under `.github/workflows/`:
 
-## CI jobs and step order
+| Workflow | When it runs | What it does |
+|----------|--------------|--------------|
+| **Golden — no hardware** (`golden-no-hw.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch | Install + verify inside `ubuntu:22.04` Docker on `ubuntu-latest` |
+| **Golden — hardware** (`golden-hw.yml`) | Manual dispatch; Renovate PRs (`renovate/*` branches) | Full HW suite on self-hosted n150 and p150b runners |
+| **Renovate** (`renovate.yml`) | Daily schedule + manual dispatch | Bump pins in `golden.json` via Renovate |
 
-| Job | Workflow | Runners | Steps (in order) |
-|-----|----------|---------|------------------|
-| **No hardware** | `golden-no-hw.yml` | `ubuntu-latest` (Docker `ubuntu:22.04`) | `golden-install.sh` → `verify-golden-versions.sh` |
-| **Hardware** | `golden-hw.yml` | `tt-ubuntu-2204-n150-stable`, `tt-ubuntu-2204-p150b-stable` | `golden-install-hw.sh` → `verify-golden-versions.sh` → `golden-smi-reset-stress.sh` → `golden-metal-unit-test.sh` → `golden-metal-upstream.sh` |
+Normal pushes and non-Renovate PRs run **no-hardware only**. Hardware runs when you dispatch **Golden — hardware**, or when a Renovate PR is open (both no-hw and hw run on those PRs).
 
-Orchestrator: `.github/workflows/golden.yml` (push to `main` / `renovate/**`, PRs touching golden files, `workflow_dispatch`).
+### Hardware step order
 
-**When jobs run:** push and PR only run the **no-hardware** install + verify job. Hardware (n150 / p150b) runs only when you start **Golden** via **Actions → Run workflow** and enable **Run hardware tests on self-hosted runners**. You can also run **Golden — hardware** directly as its own workflow.
+On `tt-ubuntu-2204-n150-stable` and `tt-ubuntu-2204-p150b-stable`:
 
-Each HW test script prints a **version banner** at the start (golden pins + what it is about to run) via `golden-echo-test-versions.sh`.
-
-## Tests and scripts
-
-| Name | Type | CI step | What it does |
-|------|------|---------|--------------|
-| **`golden-install.sh`** | Script | No-hw: install | Downloads tt-installer `install.sh`, installs KMD + `tt-smi` / `tt-flash` into a new venv. Firmware flash **off**, metalium container **off**, no container runtime. Records venv path in `/tmp/tenstorrent-installer-venv.path`. |
-| **`golden-install-hw.sh`** | Script | HW: install | Same installer flow on a self-hosted runner as **root**: KMD, venv, firmware flash **off**, metalium release container (`--metalium-image-tag` from `metal-version`). Also **pulls** `upstream-tests-bh` (not done by installer) for the upstream step. |
-| **`verify-golden-versions.sh`** | Test | Both jobs | Sources installer venv; prints version table; checks installed `installer` / `kmd` / `smi` / `flash` match `golden.json`; runs `tt-smi` and `tt-flash` **smoke** (`-v` version match, `-h` help output). |
-| **`golden-smi-reset-stress.sh`** | Test | HW only | Runs **`tt-smi -r`** (PCI reset all devices) **10×** using installer venv `tt-smi`. Stresses reset path after KMD install. |
-| **`tests/metalium-workload.py`** | Test (Python) | HW: metal unit | Opens device 0 via **ttnn**, runs a small bfloat16 tensor add. Copied from tt-installer’s metalium workload pattern. |
-| **`golden-metal-unit-test.sh`** | Script | HW: metal unit | Pulls **release** image `tt-metalium-ubuntu-22.04-release-amd64:<metal-version>`, `docker run --privileged` with `/dev/tenstorrent`, hugepages, and workload mounted read-only; entrypoint `python3 /metalium-workload.py`. Enabled on all boards in `golden-metal-boards.json`. |
-| **`golden-metal-upstream.sh`** | Test | HW: metal upstream | Pulls **`upstream-tests-bh:<metal-upstream-tag>`** when set, runs `run_upstream_tests_vanilla.sh` on p150b (`blackhole_no_models`). **Skipped on n150** or when `metal-upstream-tag` is unset (no release tag on upstream image). Optional patches (e.g. determinism on p150b). |
-| **`activate-installer-python.sh`** | Helper | (sourced) | Resolves installer venv (`VENV_DIR`, `/tmp/tenstorrent-installer-venv.path`, or `/root/.tenstorrent-venv`) and prepends `bin` to `PATH` so **`sudo` steps still use installer `tt-smi`**. |
-| **`golden-echo-test-versions.sh`** | Helper | (sourced) | Prints test banners and golden pin summary before each step. |
-| **`golden-metal-images.sh`** | Helper | (sourced) | Builds GHCR refs from `metal-version` (normalizes `v` prefix). |
-| **`golden-metal-board.sh`** | Helper | (sourced) | Matches `GOLDEN_RUNNER_LABEL` / `GITHUB_RUNNER_NAME` prefix to `.github/golden-metal-boards.json` (unit vs upstream, `metal-target`, patches). |
-
-## Container images
-
-| Pin in `golden.json` | Image | Used for |
-|----------------------|-------|----------|
-| **`metal-version`** (e.g. `v0.71.2`) | `tt-metalium-ubuntu-22.04-release-amd64:<tag>` | Customer install + metal unit test (`tests/metalium-workload.py`) |
-| **`metal-upstream-tag`** (optional) | `upstream-tests-bh:<tag>` | Metal upstream on p150b only |
-
-Release tags like `v0.71.2` exist on the **metalium release** image. **`upstream-tests-bh` does not use those tags** — GHCR only has CI dev tags (e.g. `v0.71.0-dev20260516-2-ga8aa13392b0`). If `metal-upstream-tag` is omitted, the upstream step is **skipped** (install, verify, smi stress, and unit test still run).
-
-To enable upstream, set `metal-upstream-tag` to a tag that exists on GHCR (list with the registry API or `skopeo list-tags docker://ghcr.io/tenstorrent/tt-metal/upstream-tests-bh`). Align it manually with the `metal-version` line you care about.
-
-### Board-specific metal behavior
-
-| Runner label | Metal unit | Metal upstream |
-|--------------|------------|----------------|
-| `tt-ubuntu-2204-n150-stable` | Yes | No (skip: BH upstream only) |
-| `tt-ubuntu-2204-p150b-stable` | Yes | Yes — `blackhole_no_models` |
-
-Config: `.github/golden-metal-boards.json`.
-
-## Pins (`golden.json`)
-
-| Field | Role |
-|-------|------|
-| `installer` | tt-installer release used to fetch `install.sh` |
-| `kmd`, `smi`, `flash`, `firmware` | Passed to tt-installer (`--kmd-version`, etc.) |
-| `metal-version` | tt-metalium **release** container tag (installer + unit test) |
-| `metal-upstream-tag` | Optional `upstream-tests-bh` dev tag; omit to skip upstream on p150b |
-
-## Logs
-
-Self-hosted runners may print `sudo: unable to resolve host ubuntu` on every `sudo` call when the hostname is not in `/etc/hosts`. That warning is harmless; steps still pass. See `.github/workflows/golden-hw.yml`.
-
-## Local test run
-
-From a clone of this repo, run the same steps as CI and get a terminal summary:
-
-```bash
-# Hardware (root): install + verify + smi stress + metal tests
-sudo ./complete_installer_test.sh --runner-label tt-ubuntu-2204-p150b-stable
-
-# No device: install + verify only
-./complete_installer_test.sh --no-hw
-
-# Tests only (after install)
-sudo ./complete_installer_test.sh --skip-install --runner-label tt-ubuntu-2204-n150-stable
+```
+golden-install.sh --hw  →  verify-versions.sh  →  smi-reset.sh  →  ttnn-unit-test.sh
 ```
 
-See `./complete_installer_test.sh --help` for options.
+Firmware is **not** flashed in CI (`--update-firmware off`). Runners keep their existing device firmware.
 
-**Hugepages:** HW install uses `--install-hugepages` (tt-installer default). If metal tests fail with missing `/dev/hugepages-1G`, re-run install or reboot once after the first hugepages setup (`--reboot-option never` in CI avoids auto-reboot).
+### No-hardware step order
+
+Inside a fresh `ubuntu:22.04` container as a non-root user:
+
+```
+golden-install.sh  →  verify-versions.sh
+```
+
+## Scripts
+
+All test scripts live in `.github/scripts/`.
+
+### `golden-install.sh`
+
+Downloads tt-installer `install.sh` at the pinned `installer` version and runs it non-interactively against `golden.json`.
+
+```bash
+golden-install.sh [--hw] [--force-flash]
+```
+
+| Flag | Effect |
+|------|--------|
+| *(none)* | No-hw: KMD + venv (`tt-smi`, `tt-flash`). No hugepages, no metalium, no container runtime. |
+| `--hw` | HW: adds hugepages, metalium release container, Docker/Podman, and pre-pulls `upstream-tests-bh` if `metal-upstream-tag` is set. Requires root. |
+| `--force-flash` | Enable firmware flash during install (default: off). |
+
+Records the installer venv path to `/tmp/tenstorrent-installer-venv.path`.
+
+### `verify-versions.sh`
+
+Activates the installer Python venv (`~/.tenstorrent-venv`, or `VENV_DIR` / path file) and checks:
+
+- `installer`, `kmd` (via `dpkg-query` / `rpm` on `tenstorrent-dkms`), `smi`, `flash` match `golden.json`
+- `tt-smi -v`, `tt-flash -v`, `tt-smi -h`, `tt-flash -h` smoke tests pass
+
+### `smi-reset.sh`
+
+Runs `tt-smi -r` (PCI reset all devices) **10 times** using the installer venv. Configurable via `NUM_RESETS`.
+
+### `ttnn-unit-test.sh`
+
+Pulls `ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:<metal-version>` and runs `tests/metalium-workload.py` in a privileged container with `/dev/tenstorrent` and hugepages mounted from the host. Does not re-install KMD or flash firmware.
+
+### `metal-upstream.sh`
+
+Runs `upstream-tests-bh` container tests via `run_upstream_tests_vanilla.sh`. **Not currently enabled in CI** (workflow step is commented out). The script remains for manual use; set `METAL_TARGET` (default `blackhole_no_models`) and ensure `metal-upstream-tag` is set in `golden.json`.
+
+## Test workload
+
+`tests/metalium-workload.py` — opens device 0 with **ttnn**, runs a small bfloat16 tensor add, closes the device. Mounted read-only into the metalium container at `/metalium-workload.py`.
+
+## Local run
+
+`complete_installer_test.sh` mirrors CI and prints a pass/fail summary:
+
+```bash
+# Hardware (root): golden-install.sh --hw → verify-versions.sh → smi-reset.sh → ttnn-unit-test.sh
+sudo ./complete_installer_test.sh
+
+# No device: golden-install.sh → verify-versions.sh
+./complete_installer_test.sh --no-hw
+
+# Re-run tests after a previous install
+sudo ./complete_installer_test.sh --skip-install
+
+# Install only
+sudo ./complete_installer_test.sh --install-only
+
+# Force firmware flash during install
+sudo ./complete_installer_test.sh --force-flash
+```
+
+## Notes
+
+- **Hugepages:** HW install uses `--install-hugepages`. If ttnn test fails with missing `/dev/hugepages-1G`, re-run install or reboot once after first setup (CI uses `--reboot-option never`).
+- **Self-hosted runners** may log `sudo: unable to resolve host ubuntu` when the hostname is missing from `/etc/hosts`. Harmless. To silence: `echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts`
+- **Upstream image tags** on `upstream-tests-bh` are CI dev tags (e.g. `v0.71.0-dev20260516-…`), not the same as release `metal-version` tags on the metalium image.

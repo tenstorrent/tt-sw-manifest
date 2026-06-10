@@ -1,52 +1,55 @@
 #!/usr/bin/env bash
-# Run the full golden installer validation flow locally (same steps as CI).
-# Prints each step to the terminal and prints a pass/fail/skip summary at the end.
+# Run the golden validation flow locally — same scripts and order as CI.
 #
-# Hardware (Tenstorrent device present, run as root):
-#   sudo ./complete_installer_test.sh
-#   sudo ./complete_installer_test.sh --runner-label tt-ubuntu-2204-p150b-stable
-#
-# No hardware (install + version verify only):
+# No hardware (matches golden-no-hw.yml):
 #   ./complete_installer_test.sh --no-hw
 #
-# Re-run tests after a previous install (skip tt-installer):
-#   sudo ./complete_installer_test.sh --skip-install --runner-label tt-ubuntu-2204-p150b-stable
+# Hardware (matches golden-hw.yml):
+#   sudo ./complete_installer_test.sh
+#
+# Re-run tests after a previous install:
+#   sudo ./complete_installer_test.sh --skip-install
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="${REPO_ROOT}/.github/scripts"
 GOLDEN_JSON="${GOLDEN_JSON:-${REPO_ROOT}/golden.json}"
-BOARDS_JSON="${REPO_ROOT}/.github/golden-metal-boards.json"
 
-MODE=""          # hw | no-hw
+MODE=""              # hw | no-hw
 SKIP_INSTALL=0
 INSTALL_ONLY=0
-RUNNER_LABEL="${GOLDEN_RUNNER_LABEL:-}"
+FORCE_FLASH="${FORCE_FLASH:-0}"
+RUNNER_LABEL="${GOLDEN_RUNNER_LABEL:-$(hostname 2>/dev/null || echo unknown)}"
 ORIGINAL_ARGS=("$@")
 
-# shellcheck disable=SC2034
 declare -a SUMMARY_NAMES=()
 declare -a SUMMARY_RESULTS=()
 declare -a SUMMARY_DETAILS=()
 
 usage() {
-  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
-  cat <<'EOF'
+  cat <<EOF
+Usage: $(basename "$0") [OPTIONS]
+
+Run .github/scripts in the same order as CI and print a pass/fail summary.
+
+Scripts (no-hw):  golden-install.sh → verify-versions.sh
+Scripts (hw):     golden-install.sh --hw → verify-versions.sh → smi-reset.sh → ttnn-unit-test.sh
 
 Options:
-  --hw                 Force hardware flow (requires root, /dev/tenstorrent).
-  --no-hw              Install + verify only (no device, non-root OK).
-  --skip-install       Skip install step; run verification/tests only.
-  --install-only       Run install step only, then exit with summary.
-  --runner-label NAME  Board profile for metal tests (see .github/golden-metal-boards.json).
-                       Required for metal steps unless hostname matches a profile prefix.
-  -h, --help           Show this help.
+  --hw              Force hardware flow (requires root; needs /dev/tenstorrent for full pass).
+  --no-hw           Install + verify only (no device required).
+  --skip-install    Skip golden-install.sh; run verification/tests only.
+  --install-only    Run golden-install.sh only, then print summary and exit.
+  --force-flash     Pass --force-flash to golden-install.sh (default: firmware flash off).
+  --runner-label N  Label for ttnn-unit-test.sh logs (default: hostname).
+  -h, --help        Show this help.
 
 Environment:
-  GOLDEN_JSON          Path to golden.json (default: ./golden.json)
-  GOLDEN_RUNNER_LABEL  Same as --runner-label
-  VENV_DIR             Installer venv (default: /root/.tenstorrent-venv when root, else ~/.tenstorrent-venv)
-  NUM_RESETS           tt-smi -r count (default: 10)
+  GOLDEN_JSON           Path to golden.json (default: ./golden.json)
+  GOLDEN_RUNNER_LABEL   Same as --runner-label
+  VENV_DIR              Installer venv (default: /root/.tenstorrent-venv when root)
+  NUM_RESETS            smi-reset.sh count (default: 10)
+  FORCE_FLASH           Set to 1 to enable --force-flash (same as flag)
 EOF
 }
 
@@ -61,10 +64,9 @@ banner() {
 }
 
 record_result() {
-  local name="$1" result="$2" detail="${3:-}"
-  SUMMARY_NAMES+=("${name}")
-  SUMMARY_RESULTS+=("${result}")
-  SUMMARY_DETAILS+=("${detail}")
+  SUMMARY_NAMES+=("$1")
+  SUMMARY_RESULTS+=("$2")
+  SUMMARY_DETAILS+=("${3:-}")
 }
 
 detect_mode() {
@@ -78,28 +80,9 @@ detect_mode() {
   fi
 }
 
-detect_runner_label() {
-  if [[ -n "${RUNNER_LABEL}" ]]; then
-    return 0
-  fi
-  if [[ ! -f "${BOARDS_JSON}" ]] || ! command -v jq >/dev/null 2>&1; then
-    return 1
-  fi
-  local host key prefix
-  host="$(hostname 2>/dev/null || echo unknown)"
-  while IFS= read -r prefix; do
-    [[ -z "${prefix}" ]] && continue
-    if [[ "${host}" == "${prefix}" || "${host}" == "${prefix}"* ]]; then
-      RUNNER_LABEL="${prefix}"
-      log "Auto-selected runner label from hostname: ${RUNNER_LABEL}"
-      return 0
-    fi
-  done < <(jq -r '.[]."runner-label"' "${BOARDS_JSON}")
-  return 1
-}
-
 resolve_venv_dir() {
   if [[ -n "${VENV_DIR:-}" ]]; then
+    export VENV_DIR
     return 0
   fi
   if [[ "${EUID}" -eq 0 ]]; then
@@ -110,10 +93,9 @@ resolve_venv_dir() {
   export VENV_DIR
 }
 
-run_step() {
+run_script() {
   local display_name="$1"
-  local detail_on_fail="${2:-}"
-  shift 2
+  shift
 
   banner "${display_name}"
   local start_ts end_ts elapsed rc
@@ -121,7 +103,7 @@ run_step() {
   set +e
   "$@"
   rc=$?
-  set +e
+  set -e
   end_ts="$(date +%s)"
   elapsed=$((end_ts - start_ts))
 
@@ -130,36 +112,9 @@ run_step() {
     log ">>> ${display_name}: PASS (${elapsed}s)"
     return 0
   fi
-  record_result "${display_name}" FAIL "${detail_on_fail:-exit ${rc} (${elapsed}s)}"
+  record_result "${display_name}" FAIL "exit ${rc} (${elapsed}s)"
   log ">>> ${display_name}: FAIL (exit ${rc}, ${elapsed}s)"
   return "${rc}"
-}
-
-should_run_metal_step() {
-  local field="$1"
-  if [[ "${MODE}" != hw ]]; then
-    return 1
-  fi
-  if [[ -z "${RUNNER_LABEL}" ]]; then
-    return 1
-  fi
-  if [[ ! -f "${BOARDS_JSON}" ]] || ! command -v jq >/dev/null 2>&1; then
-    return 1
-  fi
-  local board enabled
-  board="$(
-    jq -c --arg key "${RUNNER_LABEL}" '
-      [.[]
-        | (.["runner-label"] // "") as $prefix
-        | select($prefix != "" and ($key == $prefix or ($key | startswith($prefix))))
-      ][0]
-    ' "${BOARDS_JSON}"
-  )"
-  if [[ -z "${board}" || "${board}" == "null" ]]; then
-    return 1
-  fi
-  enabled="$(jq -r --arg f "${field}" 'if .[$f] == null then "false" else (.[$f] | tostring) end' <<<"${board}")"
-  [[ "${enabled}" == "true" ]]
 }
 
 record_skip() {
@@ -172,10 +127,10 @@ record_skip() {
 print_summary() {
   local pass=0 fail=0 skip=0 i
   banner "Summary"
-  printf '%-36s %-6s %s\n' "STEP" "RESULT" "DETAIL"
-  printf '%s\n' "------------------------------------ ------ ------------------------------"
+  printf '%-40s %-6s %s\n' "STEP" "RESULT" "DETAIL"
+  printf '%s\n' "---------------------------------------- ------ ------------------------------"
   for i in "${!SUMMARY_NAMES[@]}"; do
-    printf '%-36s %-6s %s\n' \
+    printf '%-40s %-6s %s\n' \
       "${SUMMARY_NAMES[$i]}" "${SUMMARY_RESULTS[$i]}" "${SUMMARY_DETAILS[$i]}"
     case "${SUMMARY_RESULTS[$i]}" in
       PASS) pass=$((pass + 1)) ;;
@@ -199,6 +154,7 @@ while [[ $# -gt 0 ]]; do
     --no-hw) MODE=no-hw; shift ;;
     --skip-install) SKIP_INSTALL=1; shift ;;
     --install-only) INSTALL_ONLY=1; shift ;;
+    --force-flash) FORCE_FLASH=1; shift ;;
     --runner-label) RUNNER_LABEL="$2"; shift 2 ;;
     -h | --help) usage; exit 0 ;;
     *)
@@ -228,6 +184,7 @@ if [[ "${MODE}" == hw && "${EUID}" -ne 0 ]]; then
     GOLDEN_RUNNER_LABEL="${RUNNER_LABEL}" \
     VENV_DIR="${VENV_DIR:-}" \
     NUM_RESETS="${NUM_RESETS:-}" \
+    FORCE_FLASH="${FORCE_FLASH}" \
     bash "${REPO_ROOT}/complete_installer_test.sh" "${ORIGINAL_ARGS[@]}"
 fi
 
@@ -235,30 +192,33 @@ resolve_venv_dir
 export GOLDEN_JSON
 
 banner "Golden installer test run"
-log "Repo:          ${REPO_ROOT}"
-log "golden.json:   ${GOLDEN_JSON}"
-log "Mode:          ${MODE}"
-log "Skip install:  ${SKIP_INSTALL}"
-log "Install only:  ${INSTALL_ONLY}"
-log "Venv:          ${VENV_DIR}"
+log "Repo:         ${REPO_ROOT}"
+log "golden.json:  ${GOLDEN_JSON}"
+log "Mode:         ${MODE}"
+log "Skip install: ${SKIP_INSTALL}"
+log "Install only: ${INSTALL_ONLY}"
+log "Force flash:  ${FORCE_FLASH}"
+log "Venv:         ${VENV_DIR}"
 if [[ "${MODE}" == hw ]]; then
-  detect_runner_label || true
-  log "Runner label:  ${RUNNER_LABEL:-<unset — metal steps may skip>}"
-fi
-
-if [[ "${MODE}" == hw ]]; then
+  log "Runner label: ${RUNNER_LABEL}"
   if [[ ! -e /dev/tenstorrent ]]; then
-    log "WARNING: /dev/tenstorrent not found; hardware tests may fail." >&2
+    log "WARNING: /dev/tenstorrent not found; smi-reset and ttnn-unit-test may fail." >&2
   fi
-  INSTALL_SCRIPT="${SCRIPTS_DIR}/golden-install-hw.sh"
-else
-  INSTALL_SCRIPT="${SCRIPTS_DIR}/golden-install.sh"
 fi
 
+# --- golden-install.sh ---
 if [[ "${SKIP_INSTALL}" -eq 0 ]]; then
-  run_step "Install (tt-installer)" "" env GOLDEN_JSON="${GOLDEN_JSON}" bash "${INSTALL_SCRIPT}" || true
+  install_args=()
+  if [[ "${MODE}" == hw ]]; then
+    install_args+=(--hw)
+  fi
+  if [[ "${FORCE_FLASH}" -eq 1 ]]; then
+    install_args+=(--force-flash)
+  fi
+  run_script "golden-install.sh" \
+    env GOLDEN_JSON="${GOLDEN_JSON}" bash "${SCRIPTS_DIR}/golden-install.sh" "${install_args[@]}" || true
 else
-  record_skip "Install (tt-installer)" "--skip-install"
+  record_skip "golden-install.sh" "--skip-install"
 fi
 
 if [[ "${INSTALL_ONLY}" -eq 1 ]]; then
@@ -266,50 +226,22 @@ if [[ "${INSTALL_ONLY}" -eq 1 ]]; then
   exit $?
 fi
 
-if [[ "${SKIP_INSTALL}" -eq 1 && "${MODE}" == hw ]]; then
-  : # verify uses activate-installer-python / venv path files from prior install
-fi
-
-run_step "Verify versions" "" \
-  env GOLDEN_JSON="${GOLDEN_JSON}" VENV_DIR="${VENV_DIR}" bash "${SCRIPTS_DIR}/verify-golden-versions.sh" || true
+# --- verify-versions.sh ---
+run_script "verify-versions.sh" \
+  env GOLDEN_JSON="${GOLDEN_JSON}" VENV_DIR="${VENV_DIR}" bash "${SCRIPTS_DIR}/verify-versions.sh" || true
 
 if [[ "${MODE}" == hw ]]; then
-  run_step "PCI reset stress (tt-smi -r)" "" \
-    env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS:-10}" bash "${SCRIPTS_DIR}/golden-smi-reset-stress.sh" || true
+  # --- smi-reset.sh ---
+  run_script "smi-reset.sh" \
+    env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS:-10}" bash "${SCRIPTS_DIR}/smi-reset.sh" || true
 
-  if should_run_metal_step metal-unit-test; then
-    run_step "Metal unit test" "" \
-      env \
-        GOLDEN_JSON="${GOLDEN_JSON}" \
-        GOLDEN_RUNNER_LABEL="${RUNNER_LABEL}" \
-        GITHUB_RUNNER_NAME="${RUNNER_LABEL}" \
-        bash "${SCRIPTS_DIR}/golden-metal-unit-test.sh" || true
-  else
-    if [[ -z "${RUNNER_LABEL}" ]]; then
-      record_skip "Metal unit test" "set --runner-label (see ${BOARDS_JSON})"
-    else
-      record_skip "Metal unit test" "disabled for runner label ${RUNNER_LABEL}"
-    fi
-  fi
-
-  if should_run_metal_step metal-upstream; then
-    run_step "Metal upstream tests" "" \
-      env \
-        GOLDEN_JSON="${GOLDEN_JSON}" \
-        GOLDEN_RUNNER_LABEL="${RUNNER_LABEL}" \
-        GITHUB_RUNNER_NAME="${RUNNER_LABEL}" \
-        bash "${SCRIPTS_DIR}/golden-metal-upstream.sh" || true
-  else
-    if [[ -z "${RUNNER_LABEL}" ]]; then
-      record_skip "Metal upstream tests" "set --runner-label for p150b upstream"
-    else
-      record_skip "Metal upstream tests" "disabled or no metal-upstream-tag for ${RUNNER_LABEL}"
-    fi
-  fi
-else
-  record_skip "PCI reset stress (tt-smi -r)" "--no-hw mode"
-  record_skip "Metal unit test" "--no-hw mode"
-  record_skip "Metal upstream tests" "--no-hw mode"
+  # --- ttnn-unit-test.sh ---
+  run_script "ttnn-unit-test.sh" \
+    env \
+      GOLDEN_JSON="${GOLDEN_JSON}" \
+      GOLDEN_RUNNER_LABEL="${RUNNER_LABEL}" \
+      GITHUB_RUNNER_NAME="${RUNNER_LABEL}" \
+      bash "${SCRIPTS_DIR}/ttnn-unit-test.sh" || true
 fi
 
 print_summary

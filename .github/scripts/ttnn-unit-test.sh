@@ -1,36 +1,52 @@
 #!/usr/bin/env bash
-# Metal unit test: tt-metalium release container smoke (tt-installer metalium-workload pattern).
+# TTNN unit test: tt-metalium release container smoke (tt-installer metalium-workload pattern).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 GOLDEN_JSON="${GOLDEN_JSON:-${REPO_ROOT}/golden.json}"
-GOLDEN_METAL_BOARDS_JSON="${BOARDS_JSON:-${REPO_ROOT}/.github/golden-metal-boards.json}"
 WORKLOAD_PY="${REPO_ROOT}/tests/metalium-workload.py"
+RUNNER_LABEL="${GOLDEN_RUNNER_LABEL:-${GITHUB_RUNNER_NAME:-}}"
 
-# shellcheck source=golden-metal-images.sh
-source "${SCRIPT_DIR}/golden-metal-images.sh"
-# shellcheck source=golden-metal-board.sh
-source "${SCRIPT_DIR}/golden-metal-board.sh"
-# shellcheck source=golden-echo-test-versions.sh
-source "${SCRIPT_DIR}/golden-echo-test-versions.sh"
-# shellcheck source=golden-check-hugepages.sh
-source "${SCRIPT_DIR}/golden-check-hugepages.sh"
+readonly GOLDEN_METALIUM_RELEASE_REPO="ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64"
+
+normalize_metal_image_tag() {
+  local tag="${1:?}"
+  case "${tag}" in
+    latest-rc | latest) printf '%s\n' "${tag}" ;;
+    v*) printf '%s\n' "${tag}" ;;
+    *) printf 'v%s\n' "${tag}" ;;
+  esac
+}
+
+read_golden_metal_version() {
+  jq -r '.["metal-version"] // .["metalium-image-tag"] // empty' "${GOLDEN_JSON}"
+}
+
+resolve_metalium_release_image() {
+  printf '%s:%s\n' "${GOLDEN_METALIUM_RELEASE_REPO}" "$(normalize_metal_image_tag "$(read_golden_metal_version)")"
+}
+
+golden_check_hugepages() {
+  if [[ -d /dev/hugepages-1G ]] || [[ -d /dev/hugepages ]]; then
+    return 0
+  fi
+  echo "FAIL: host hugepages are not configured (/dev/hugepages-1G and /dev/hugepages missing)." >&2
+  echo "  Run golden-install.sh --hw (uses --install-hugepages)." >&2
+  return 1
+}
 
 if [[ ! -f "${GOLDEN_JSON}" ]]; then
   echo "golden.json not found at ${GOLDEN_JSON}" >&2
   exit 1
 fi
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required" >&2
+  exit 1
+fi
 if [[ ! -f "${WORKLOAD_PY}" ]]; then
   echo "workload script not found at ${WORKLOAD_PY}" >&2
   exit 1
-fi
-
-golden_metal_require_board
-
-if [[ "$(golden_metal_board_bool metal-unit-test true)" != "true" ]]; then
-  echo "SKIP: metal unit test disabled for this runner"
-  exit 0
 fi
 
 golden_check_hugepages
@@ -54,19 +70,27 @@ _resolve_metalium_image() {
     cat /tmp/tenstorrent-metalium-image.path
     return 0
   fi
-  resolve_metalium_release_image "${GOLDEN_JSON}"
+  resolve_metalium_release_image
 }
 
 _resolve_container_cmd
-METAL_VERSION="$(read_golden_metal_version "${GOLDEN_JSON}")"
+METAL_VERSION="$(read_golden_metal_version)"
 METALIUM_IMAGE="$(_resolve_metalium_image)"
 
-golden_echo_test_banner "Metal unit test (tt-metalium release container)"
-golden_echo_golden_json_pins "${GOLDEN_JSON}"
+printf '\n========== TTNN unit test (tt-metalium release container) ==========\n'
+echo "golden.json pins:"
+jq -r '
+  "  installer:     \(.installer)",
+  "  kmd:           \(.kmd)",
+  "  smi:           \(.smi)",
+  "  flash:         \(.flash)",
+  "  firmware:      \(.firmware)",
+  "  metal-version: \(.["metal-version"] // .["metalium-image-tag"] // "n/a")"
+' "${GOLDEN_JSON}"
 echo "running:"
 echo "  metal-version: ${METAL_VERSION}"
 echo "  image:         ${METALIUM_IMAGE}"
-echo "  runner label:  ${golden_metal_match_key}"
+echo "  runner label:  ${RUNNER_LABEL:-n/a}"
 echo "  instance:      ${GITHUB_RUNNER_NAME:-n/a}"
 echo "  runtime:       ${CONTAINER_CMD}"
 echo "  workload:      ${WORKLOAD_PY}"
@@ -88,4 +112,4 @@ ${CONTAINER_CMD} run --rm \
   "${METALIUM_IMAGE}" \
   /metalium-workload.py
 
-echo "PASS: metal unit test"
+echo "PASS: ttnn unit test"

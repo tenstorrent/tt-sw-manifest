@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Echo installed component versions and assert they match golden.json.
+# Activate installer Python venv and verify installed versions match golden.json.
 set -euo pipefail
 
 GOLDEN_JSON="${GOLDEN_JSON:-/workspace/golden.json}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ ! -f "${GOLDEN_JSON}" ]]; then
   echo "golden.json not found at ${GOLDEN_JSON}" >&2
@@ -15,34 +14,66 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# shellcheck source=/dev/null
-source "${SCRIPT_DIR}/activate-installer-python.sh"
-# shellcheck source=golden-echo-test-versions.sh
-source "${SCRIPT_DIR}/golden-echo-test-versions.sh"
-# shellcheck source=golden-metal-images.sh
-source "${SCRIPT_DIR}/golden-metal-images.sh"
+_resolve_installer_venv_dir() {
+  if [[ -n "${VENV_DIR:-}" ]]; then
+    printf '%s\n' "${VENV_DIR}"
+    return 0
+  fi
+  if [[ -f /tmp/tenstorrent-installer-venv.path ]]; then
+    cat /tmp/tenstorrent-installer-venv.path
+    return 0
+  fi
+  local ttis_file=""
+  for candidate in "${HOME}/.ttis" "/root/.ttis"; do
+    if [[ -f "${candidate}" ]]; then
+      ttis_file="${candidate}"
+      break
+    fi
+  done
+  if [[ -n "${ttis_file}" ]]; then
+    local from_ttis
+    from_ttis="$(jq -r '.python_env.location // empty' "${ttis_file}" 2>/dev/null || true)"
+    if [[ -n "${from_ttis}" && "${from_ttis}" != "null" ]]; then
+      printf '%s\n' "${from_ttis}"
+      return 0
+    fi
+  fi
+  if [[ "${EUID}" -eq 0 && -f /root/.tenstorrent-venv/bin/tt-smi ]]; then
+    printf '%s\n' /root/.tenstorrent-venv
+    return 0
+  fi
+  printf '%s\n' "${HOME}/.tenstorrent-venv"
+}
 
-golden_echo_test_banner "Verify installed vs golden.json"
-golden_echo_golden_json_pins "${GOLDEN_JSON}"
-echo "running:"
-echo "  metal-version: $(read_golden_metal_version "${GOLDEN_JSON}")"
-echo "  release image: $(resolve_metalium_release_image "${GOLDEN_JSON}")"
-if golden_metal_upstream_enabled "${GOLDEN_JSON}"; then
-  echo "  upstream image: $(resolve_metal_upstream_image "${GOLDEN_JSON}")"
-else
-  echo "  upstream image: (not configured — set metal-upstream-tag to enable)"
+VENV_DIR="$(_resolve_installer_venv_dir)"
+if [[ ! -x "${VENV_DIR}/bin/tt-smi" ]]; then
+  echo "Installer venv not found at ${VENV_DIR} (expected ${VENV_DIR}/bin/tt-smi)" >&2
+  echo "Run golden-install.sh first or set VENV_DIR." >&2
+  exit 1
 fi
+export VENV_DIR
+export PATH="${VENV_DIR}/bin:${PATH}"
+
+printf '\n========== Verify installed vs golden.json ==========\n'
+echo "golden.json pins:"
+jq -r '
+  "  installer:     \(.installer)",
+  "  kmd:           \(.kmd)",
+  "  smi:           \(.smi)",
+  "  flash:         \(.flash)",
+  "  firmware:      \(.firmware)",
+  "  metal-version: \(.["metal-version"] // .["metalium-image-tag"] // "n/a")",
+  "  metal-upstream-tag: \(.["metal-upstream-tag"] // "(not set)")"
+' "${GOLDEN_JSON}"
+echo "venv: ${VENV_DIR}"
 echo ""
 
 normalize_ver() {
-  # Drop leading v and Debian/RPM revision suffix (e.g. 2.8.0-1 -> 2.8.0).
   sed -E 's/^v//; s/-[0-9].*$//; s/\+.*$//' <<<"$1"
 }
 
 versions_match() {
-  local expected="$1"
-  local actual="$2"
-  [[ "$(normalize_ver "${expected}")" == "$(normalize_ver "${actual}")" ]]
+  [[ "$(normalize_ver "$1")" == "$(normalize_ver "$2")" ]]
 }
 
 read_installer_version() {
@@ -67,8 +98,7 @@ read_kmd_version() {
 }
 
 read_cli_semver() {
-  local cmd="$1"
-  "${cmd}" -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1
+  "$1" -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1
 }
 
 run_cli_smoke_test() {
@@ -127,10 +157,8 @@ run_python_cli_smoke_tests() {
     if ! command -v "${cmd}" >/dev/null 2>&1; then
       echo "FAIL: ${cmd} not found in PATH" >&2
       smoke_fail=1
-      continue
     fi
   done
-
   if [[ "${smoke_fail}" -ne 0 ]]; then
     return 1
   fi
@@ -143,14 +171,6 @@ run_python_cli_smoke_tests() {
   return "${smoke_fail}"
 }
 
-read_smi_version() {
-  read_cli_semver tt-smi
-}
-
-read_flash_version() {
-  read_cli_semver tt-flash
-}
-
 EXPECTED_INSTALLER="$(jq -r '.installer' "${GOLDEN_JSON}")"
 EXPECTED_KMD="$(jq -r '.kmd' "${GOLDEN_JSON}")"
 EXPECTED_SMI="$(jq -r '.smi' "${GOLDEN_JSON}")"
@@ -158,13 +178,14 @@ EXPECTED_FLASH="$(jq -r '.flash' "${GOLDEN_JSON}")"
 
 ACTUAL_INSTALLER="$(read_installer_version)"
 ACTUAL_KMD="$(read_kmd_version)"
-ACTUAL_SMI="$(read_smi_version)"
-ACTUAL_FLASH="$(read_flash_version)"
+ACTUAL_SMI="$(read_cli_semver tt-smi)"
+ACTUAL_FLASH="$(read_cli_semver tt-flash)"
 
 fail=0
 if ! run_python_cli_smoke_tests "${EXPECTED_SMI}" "${EXPECTED_FLASH}"; then
   fail=1
 fi
+
 check_row() {
   local name="$1"
   local expected="$2"

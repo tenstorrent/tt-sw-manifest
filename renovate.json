@@ -130,7 +130,7 @@
       "allowedVersions": "/^19\\.[0-9]+\\.[0-9]+$/"
     },
     {
-      "description": "Metal GHCR tags are v-prefixed (e.g. v0.71.2); image repos are in golden-metal-images.sh",
+      "description": "Metal GHCR tags are v-prefixed (e.g. v0.71.2); image repos are in golden-install.sh / metal test scripts",
       "matchDepNames": [
         "metal-version"
       ],

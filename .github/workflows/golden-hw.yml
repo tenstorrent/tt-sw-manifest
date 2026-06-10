@@ -1,16 +1,32 @@
-# Reusable workflow: install golden stack on self-hosted runners, verify versions,
-# stress-test tt-smi reset, metal unit test (tt-metalium release), and metal upstream (upstream-tests-bh).
-# Runners and markers mirror tenstorrent/tt-smi/.github/workflows/test.yml (test-hardware job).
+# Install golden stack on self-hosted runners, verify versions, stress-test tt-smi reset,
+# ttnn unit test (tt-metalium release), and metal upstream (upstream-tests-bh).
+# Runners mirror tenstorrent/tt-smi/.github/workflows/test.yml (test-hardware job).
 #
-# Self-hosted runners often log "sudo: unable to resolve host ubuntu" on every sudo call when
-# the machine hostname (ubuntu) is not in /etc/hosts. That warning is harmless; steps still pass.
-# To silence it on a runner: echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts
-name: Golden — hardware (smi + metal)
+# Runs on workflow_dispatch, or on Renovate PRs (renovate/* branches).
+# Self-hosted runners may log "sudo: unable to resolve host ubuntu" when hostname is not in
+# /etc/hosts — harmless. To silence: echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts
+name: Golden — hardware
 run-name: Golden hw · ${{ github.event_name }}
 
 on:
-  workflow_call:
+  pull_request:
+    paths:
+      - golden.json
+      - .github/workflows/golden-no-hw.yml
+      - .github/workflows/golden-hw.yml
+      - .github/workflows/renovate.yml
+      - .github/scripts/**
+      - tests/metalium-workload.py
   workflow_dispatch:
+    inputs:
+      reason:
+        description: Why you are running this workflow (optional)
+        required: false
+        type: string
+
+concurrency:
+  group: golden-hw-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -18,6 +34,9 @@ permissions:
 jobs:
   golden-hw-integration:
     name: Golden hw (${{ matrix.runner }})
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && startsWith(github.head_ref, 'renovate/'))
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -36,21 +55,22 @@ jobs:
       - name: Install golden stack (tt-installer)
         env:
           GOLDEN_JSON: ${{ github.workspace }}/golden.json
-        run: sudo env GOLDEN_JSON="${GOLDEN_JSON}" bash .github/scripts/golden-install-hw.sh
+        # No flashing of firmware! Runners keep existing firmware.
+        run: sudo env GOLDEN_JSON="${GOLDEN_JSON}" bash .github/scripts/golden-install.sh --hw
 
       - name: Verify installed smi matches golden.json
         env:
           GOLDEN_JSON: ${{ github.workspace }}/golden.json
           VENV_DIR: /root/.tenstorrent-venv
-        run: sudo -E env GOLDEN_JSON="${GOLDEN_JSON}" VENV_DIR="${VENV_DIR}" bash .github/scripts/verify-golden-versions.sh
+        run: sudo -E env GOLDEN_JSON="${GOLDEN_JSON}" VENV_DIR="${VENV_DIR}" bash .github/scripts/verify-versions.sh
 
       - name: PCI reset stress (10x, installer tt-smi)
         env:
           VENV_DIR: /root/.tenstorrent-venv
           NUM_RESETS: "10"
-        run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" bash .github/scripts/golden-smi-reset-stress.sh
+        run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" bash .github/scripts/smi-reset.sh
 
-      - name: Metal unit test (tt-metalium release container)
+      - name: TTNN unit test (tt-metalium release container)
         timeout-minutes: 30
         env:
           GOLDEN_JSON: ${{ github.workspace }}/golden.json
@@ -60,16 +80,17 @@ jobs:
             GOLDEN_JSON="${GOLDEN_JSON}" \
             GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
             GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
-            bash .github/scripts/golden-metal-unit-test.sh
+            bash .github/scripts/ttnn-unit-test.sh
 
-      - name: Metal upstream tests (upstream-tests-bh)
-        timeout-minutes: 120
-        env:
-          GOLDEN_JSON: ${{ github.workspace }}/golden.json
-          GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
-        run: |
-          sudo -E env \
-            GOLDEN_JSON="${GOLDEN_JSON}" \
-            GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
-            GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
-            bash .github/scripts/golden-metal-upstream.sh
+      #  Commenting this out for now - this will depend on the type of runner
+      # - name: Metal upstream tests (upstream-tests-bh)
+      #   timeout-minutes: 120
+      #   env:
+      #     GOLDEN_JSON: ${{ github.workspace }}/golden.json
+      #     GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
+      #   run: |
+      #     sudo -E env \
+      #       GOLDEN_JSON="${GOLDEN_JSON}" \
+      #       GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
+      #       GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
+      #       bash .github/scripts/metal-upstream.sh
