@@ -83,10 +83,10 @@ if [[ -z "${INSTALLER_URL}" ]]; then
 fi
 
 if [[ "${FORCE_FLASH}" -eq 1 ]]; then
-  FW_UPDATE_FLAG="--update-firmware force"
+  FW_UPDATE_ARGS=(--update-firmware force)
   FW_NOTE="flash enabled (--force-flash)"
 else
-  FW_UPDATE_FLAG="--update-firmware off"
+  FW_UPDATE_ARGS=(--update-firmware off)
   FW_NOTE="flash disabled (default)"
 fi
 
@@ -120,10 +120,10 @@ if [[ "${HW}" -eq 1 ]]; then
   fi
 
   INSTALL_TIMEOUT=1800
-  HUGE_PAGES_FLAG="--install-hugepages"
-  METALIUM_FLAG="--install-metalium-container"
-  CONTAINER_RUNTIME_FLAG="--install-container-runtime ${CONTAINER_RUNTIME}"
-  METALIUM_TAG_FLAG=(--metalium-image-tag "${METAL_VERSION}")
+  HUGE_PAGES_ARGS=(--install-hugepages)
+  METALIUM_ARGS=(--install-metalium-container)
+  CONTAINER_RUNTIME_ARGS=(--install-container-runtime "${CONTAINER_RUNTIME}")
+  METALIUM_TAG_ARGS=(--metalium-image-tag "${METAL_VERSION}")
 else
   echo "=== Golden install (no hardware) ==="
   echo "golden.json: ${GOLDEN_JSON}"
@@ -134,10 +134,10 @@ else
   echo "firmware:    ${FW_VER} (${FW_NOTE})"
 
   INSTALL_TIMEOUT=900
-  HUGE_PAGES_FLAG="--no-install-hugepages"
-  METALIUM_FLAG="--no-install-metalium-container"
-  CONTAINER_RUNTIME_FLAG="--install-container-runtime no"
-  METALIUM_TAG_FLAG=()
+  HUGE_PAGES_ARGS=(--no-install-hugepages)
+  METALIUM_ARGS=(--no-install-metalium-container)
+  CONTAINER_RUNTIME_ARGS=(--install-container-runtime no)
+  METALIUM_TAG_ARGS=()
 fi
 
 curl -fsSL "${INSTALLER_URL}" -o /tmp/tt-install.sh
@@ -146,22 +146,22 @@ chmod +x /tmp/tt-install.sh
 timeout "${INSTALL_TIMEOUT}" bash /tmp/tt-install.sh \
   --mode-non-interactive \
   --install-kmd \
-  "${HUGE_PAGES_FLAG}" \
-  "${FW_UPDATE_FLAG}" \
-  "${METALIUM_FLAG}" \
+  "${HUGE_PAGES_ARGS[@]}" \
+  "${FW_UPDATE_ARGS[@]}" \
+  "${METALIUM_ARGS[@]}" \
   --no-install-metalium-models-container \
   --no-install-forge-container \
   --no-install-sfpi \
   --no-install-inference-server \
   --no-install-studio \
-  ${CONTAINER_RUNTIME_FLAG} \
+  "${CONTAINER_RUNTIME_ARGS[@]}" \
   --python-choice new-venv \
   --reboot-option never \
   --kmd-version "${KMD_VER}" \
   --smi-version "${SMI_VER}" \
   --flash-version "${FLASH_VER}" \
   --fw-version "${FW_VER}" \
-  "${METALIUM_TAG_FLAG[@]}"
+  "${METALIUM_TAG_ARGS[@]}"
 
 INSTALLER_VENV="${HOME}/.tenstorrent-venv"
 if [[ -x "${INSTALLER_VENV}/bin/python" ]]; then
