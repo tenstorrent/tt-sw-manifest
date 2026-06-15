@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Activate installer Python venv and verify installed versions match golden.json.
 set -euo pipefail
+# Surface the location of any unexpected top-level abort instead of exiting
+# silently. Not using errtrace (set -E) on purpose: the helpers below tolerate
+# failures with `set +e`, and errtrace would fire this in their subshells.
+trap 'rc=$?; echo "::error::verify-versions.sh aborted at line ${LINENO} (exit ${rc}): ${BASH_COMMAND}" >&2' ERR
 
 GOLDEN_JSON="${GOLDEN_JSON:-/workspace/golden.json}"
 
@@ -82,9 +86,11 @@ read_installer_version() {
     echo "unknown"
     return
   fi
-  grep -E '^[[:space:]]*INSTALLER_VERSION=' "${script}" \
+  local v
+  v="$(grep -E '^[[:space:]]*INSTALLER_VERSION=' "${script}" \
     | head -n1 \
-    | sed -E 's/.*INSTALLER_VERSION="([^"]+)".*/\1/'
+    | sed -E 's/.*INSTALLER_VERSION="([^"]+)".*/\1/' || true)"
+  printf '%s\n' "${v:-unknown}"
 }
 
 read_kmd_version() {
@@ -98,7 +104,14 @@ read_kmd_version() {
 }
 
 read_cli_semver() {
-  "$1" -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1
+  # Tolerant: never aborts the caller. Returns the first semver from "<cmd> -v",
+  # or empty if the command failed or printed none (the smoke test below reports
+  # the full output and exit code in that case).
+  local out
+  set +e
+  out="$("$1" -v 2>&1)"
+  set -e
+  printf '%s\n' "${out}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true
 }
 
 run_cli_smoke_test() {
@@ -108,12 +121,17 @@ run_cli_smoke_test() {
 
   echo ""
   echo "--- ${cmd} ${flag} ---"
-  local output
-  if ! output="$("${cmd}" "${flag}" 2>&1)"; then
-    echo "FAIL: ${cmd} ${flag} exited non-zero" >&2
+  local output rc
+  set +e
+  output="$("${cmd}" "${flag}" 2>&1)"
+  rc=$?
+  set -e
+  # Always print the raw output (incl. tracebacks) so failures are diagnosable.
+  printf '%s\n' "${output}"
+  if [[ "${rc}" -ne 0 ]]; then
+    echo "FAIL: ${cmd} ${flag} exited non-zero (exit ${rc})" >&2
     return 1
   fi
-  echo "${output}"
 
   case "${flag}" in
     -v)
@@ -202,7 +220,13 @@ echo ""
 echo "=== Installed vs golden.json ==="
 printf "| %-12s | %-14s | %-14s | %-4s |\n" "component" "golden" "installed" "ok"
 printf "|%s|%s|%s|%s|\n" "--------------" "--------------" "--------------" "------"
-check_row "installer" "${EXPECTED_INSTALLER}" "${ACTUAL_INSTALLER}"
+if [[ "${SKIP_INSTALLER_VERSION_CHECK:-0}" == "1" ]]; then
+  # Installing from a release whose version differs from golden.json's `installer`
+  # pin (e.g. a fork release used for testing). Report but don't fail on it.
+  printf "| %-12s | %-14s | %-14s | %-4s |\n" "installer" "${EXPECTED_INSTALLER}" "${ACTUAL_INSTALLER}" "SKIP"
+else
+  check_row "installer" "${EXPECTED_INSTALLER}" "${ACTUAL_INSTALLER}"
+fi
 check_row "kmd" "${EXPECTED_KMD}" "${ACTUAL_KMD}"
 check_row "smi" "${EXPECTED_SMI}" "${ACTUAL_SMI}"
 check_row "flash" "${EXPECTED_FLASH}" "${ACTUAL_FLASH}"

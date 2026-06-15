@@ -12,7 +12,7 @@ on:
   pull_request:
     paths:
       - golden.json
-      - .github/workflows/golden-no-hw.yml
+      - .github/workflows/golden-ttis.yml
       - .github/workflows/golden-hw.yml
       - .github/workflows/renovate.yml
       - .github/scripts/**

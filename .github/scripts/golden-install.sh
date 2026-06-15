@@ -3,23 +3,34 @@
 #
 # Usage:
 #   golden-install.sh [--hw] [--force-flash]
+#   golden-install.sh --ttis <file>
 #
 #   --hw           Hardware runner: hugepages, metalium container, container runtime,
 #                  upstream-tests-bh pull. Requires root.
 #   --force-flash  Flash firmware during install (default: off).
+#   --ttis <file>  No-hardware install driven by a compiled .ttis file via
+#                  tt-installer --import-schema (version pins come from the file,
+#                  not from individual flags). Mutually exclusive with --hw.
 set -euo pipefail
 
 GOLDEN_JSON="${GOLDEN_JSON:-/workspace/golden.json}"
 INSTALLER_URL="${INSTALLER_URL:-}"
+# Release source for install.sh / ttis.sh. Defaults to the upstream repo and the
+# golden.json `installer` pin; override INSTALLER_REPO / INSTALLER_TAG to test
+# against another release (e.g. a fork) without touching golden.json.
+INSTALLER_REPO="${INSTALLER_REPO:-tenstorrent/tt-installer}"
+INSTALLER_TAG="${INSTALLER_TAG:-}"
 HW="${GOLDEN_HW:-0}"
 FORCE_FLASH="${FORCE_FLASH:-0}"
+TTIS_FILE="${TTIS_FILE:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --hw) HW=1; shift ;;
     --force-flash) FORCE_FLASH=1; shift ;;
+    --ttis) TTIS_FILE="${2:?--ttis requires a file path}"; shift 2 ;;
     -h | --help)
-      sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -78,8 +89,66 @@ SMI_VER="$(jq -r '.smi' "${GOLDEN_JSON}")"
 FLASH_VER="$(jq -r '.flash' "${GOLDEN_JSON}")"
 FW_VER="$(jq -r '.firmware' "${GOLDEN_JSON}")"
 
+INSTALLER_TAG="${INSTALLER_TAG:-v${INSTALLER_VER}}"
 if [[ -z "${INSTALLER_URL}" ]]; then
-  INSTALLER_URL="https://github.com/tenstorrent/tt-installer/releases/download/v${INSTALLER_VER}/install.sh"
+  INSTALLER_URL="https://github.com/${INSTALLER_REPO}/releases/download/${INSTALLER_TAG}/install.sh"
+fi
+
+record_installer_venv() {
+  local venv="${HOME}/.tenstorrent-venv"
+  if [[ -x "${venv}/bin/python" ]]; then
+    echo "${venv}" > /tmp/tenstorrent-installer-venv.path
+    echo "Installer Python venv recorded at ${venv}"
+  else
+    echo "WARNING: expected installer venv not found at ${venv}/bin/python" >&2
+  fi
+}
+
+# ── .ttis import mode (no hardware) ──────────────────────────────────────────
+# Install the stack from a compiled .ttis file. tt-installer's install.sh sources
+# ttis.sh from its own directory, so we fetch both into /tmp. Version pins,
+# hugepages/sfpi, firmware (off) and container runtime all come from the file;
+# only the non-schema components are disabled here.
+if [[ -n "${TTIS_FILE}" ]]; then
+  if [[ "${HW}" -eq 1 ]]; then
+    echo "--ttis is a no-hardware path; do not combine with --hw" >&2
+    exit 2
+  fi
+  if [[ ! -f "${TTIS_FILE}" ]]; then
+    echo "ttis file not found at ${TTIS_FILE}" >&2
+    exit 1
+  fi
+  TTIS_URL="${TTIS_URL:-https://github.com/${INSTALLER_REPO}/releases/download/${INSTALLER_TAG}/ttis.sh}"
+
+  echo "=== Golden install (import .ttis, no hardware) ==="
+  echo "golden.json: ${GOLDEN_JSON}"
+  echo "ttis file:   ${TTIS_FILE}"
+  echo "installer:   ${INSTALLER_REPO}@${INSTALLER_TAG} (${INSTALLER_URL})"
+
+  curl -fsSL "${INSTALLER_URL}" -o /tmp/tt-install.sh
+  curl -fsSL "${TTIS_URL}" -o /tmp/ttis.sh
+  chmod +x /tmp/tt-install.sh
+
+  # Optional extra installer flags (e.g. --use-uv), supplied by the caller.
+  TTIS_EXTRA_ARGS=()
+  if [[ -n "${INSTALL_EXTRA_ARGS:-}" ]]; then
+    read -ra TTIS_EXTRA_ARGS <<< "${INSTALL_EXTRA_ARGS}"
+  fi
+
+  timeout 900 bash /tmp/tt-install.sh \
+    --mode-non-interactive \
+    --import-schema "${TTIS_FILE}" \
+    ${TTIS_EXTRA_ARGS[@]+"${TTIS_EXTRA_ARGS[@]}"} \
+    --no-install-metalium-container \
+    --no-install-metalium-models-container \
+    --no-install-forge-container \
+    --no-install-inference-server \
+    --no-install-studio \
+    --reboot-option never
+
+  record_installer_venv
+  echo "=== Install finished (import) ==="
+  exit 0
 fi
 
 if [[ "${FORCE_FLASH}" -eq 1 ]]; then
@@ -163,13 +232,7 @@ timeout "${INSTALL_TIMEOUT}" bash /tmp/tt-install.sh \
   --fw-version "${FW_VER}" \
   "${METALIUM_TAG_ARGS[@]}"
 
-INSTALLER_VENV="${HOME}/.tenstorrent-venv"
-if [[ -x "${INSTALLER_VENV}/bin/python" ]]; then
-  echo "${INSTALLER_VENV}" > /tmp/tenstorrent-installer-venv.path
-  echo "Installer Python venv recorded at ${INSTALLER_VENV}"
-else
-  echo "WARNING: expected installer venv not found at ${INSTALLER_VENV}/bin/python" >&2
-fi
+record_installer_venv
 
 if [[ "${HW}" -eq 1 ]]; then
   TT_METALIUM_WRAPPER="${HOME}/.local/bin/tt-metalium"
