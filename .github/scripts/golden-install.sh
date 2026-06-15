@@ -129,9 +129,16 @@ if [[ -n "${TTIS_FILE}" ]]; then
   curl -fsSL "${TTIS_URL}" -o /tmp/ttis.sh
   chmod +x /tmp/tt-install.sh
 
+  # Optional extra installer flags (e.g. --use-uv), supplied by the caller.
+  TTIS_EXTRA_ARGS=()
+  if [[ -n "${INSTALL_EXTRA_ARGS:-}" ]]; then
+    read -ra TTIS_EXTRA_ARGS <<< "${INSTALL_EXTRA_ARGS}"
+  fi
+
   timeout 900 bash /tmp/tt-install.sh \
     --mode-non-interactive \
     --import-schema "${TTIS_FILE}" \
+    ${TTIS_EXTRA_ARGS[@]+"${TTIS_EXTRA_ARGS[@]}"} \
     --no-install-metalium-container \
     --no-install-metalium-models-container \
     --no-install-forge-container \

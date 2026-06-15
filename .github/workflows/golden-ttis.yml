@@ -47,12 +47,14 @@ jobs:
 
       - name: Compile + test .ttis in ${{ matrix.image }}
         env:
-          # TEMP: schema-capable install.sh + ttis.sh only exist in a fork release
-          # for now (tenstorrent/tt-installer has not released the schema feature).
-          # Once it does, delete this env block — the scripts default to
-          # tenstorrent/tt-installer at golden.json's `installer` pin.
+          # TEMP: the schema feature (install.sh --import-schema + ttis.sh) and the
+          # uv-venv Python provisioning are only in a fork release for now.
+          # INSTALLER_TAG must point at the release that contains BOTH — i.e. the
+          # one cut after backporting the install.m4/ttis.sh uv-venv changes.
+          # Delete this block once tenstorrent/tt-installer releases them; the
+          # scripts then default to tenstorrent/tt-installer at golden.json's pin.
           INSTALLER_REPO: knauth/tt-installer
-          INSTALLER_TAG: v3.0.0
+          INSTALLER_TAG: v3.1.0
           SKIP_INSTALLER_VERSION_CHECK: "1"
         run: |
           docker run --rm \

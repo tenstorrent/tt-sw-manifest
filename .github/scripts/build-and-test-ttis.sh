@@ -27,6 +27,10 @@ curl -fsSL "${TTIS_URL}" -o /tmp/ttis.sh
 echo "── Validate ${TTIS} ──"
 bash /tmp/ttis.sh validate "${TTIS}"
 
+# Note: when a .ttis pins python_env.python_version (e.g. Fedora -> 3.12, since
+# its system Python 3.14 has no tt-umd wheels), tt-installer creates the venv
+# with `uv venv --python <ver>`, installing uv first if needed. No host-side
+# Python shimming required here.
 echo "── Install golden stack from ${INSTALLER_REPO}@${INSTALLER_TAG} (--import-schema) ──"
 GOLDEN_JSON="${GOLDEN_JSON}" bash "${SCRIPT_DIR}/golden-install.sh" --ttis "${TTIS}"
 

@@ -21,6 +21,7 @@ OUT=""
 DISTRO_ID=""
 DISTRO_VERSION=""
 DISTRO_FAMILY=""
+PY_VERSION="${PY_VERSION:-}"
 
 log() { echo "[compile-ttis] $*" >&2; }
 
@@ -30,6 +31,7 @@ while [[ $# -gt 0 ]]; do
     --distro-id) DISTRO_ID="$2"; shift 2 ;;
     --distro-version) DISTRO_VERSION="$2"; shift 2 ;;
     --family) DISTRO_FAMILY="$2"; shift 2 ;;
+    --python-version) PY_VERSION="$2"; shift 2 ;;
     -h | --help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
@@ -68,6 +70,12 @@ if [[ -z "${DISTRO_ID}" || -z "${DISTRO_VERSION}" ]]; then
   exit 1
 fi
 
+# Fedora 43 ships Python 3.14, which tt-umd (a tt-smi dependency) has no
+# distribution for. Pin 3.12 there; on import the installer provisions it via uv.
+if [[ -z "${PY_VERSION}" && "${DISTRO_ID}" == "fedora" ]]; then
+  PY_VERSION="3.12"
+fi
+
 OUT="${OUT:-golden/${DISTRO_ID}-${DISTRO_VERSION}.ttis}"
 mkdir -p "$(dirname "${OUT}")"
 
@@ -78,7 +86,7 @@ INSTALLER="$(jq -r '.installer' "${GOLDEN_JSON}")"
 
 log "golden.json: ${GOLDEN_JSON}"
 log "target: ${DISTRO_ID} ${DISTRO_VERSION} (${DISTRO_FAMILY})"
-log "kmd=${KMD} smi=${SMI} flash=${FLASH} installer=${INSTALLER}"
+log "kmd=${KMD} smi=${SMI} flash=${FLASH} installer=${INSTALLER} python=${PY_VERSION:-default}"
 
 jq -n \
   --arg iv "${INSTALLER}" \
@@ -89,6 +97,7 @@ jq -n \
   --arg kmd "${KMD}" \
   --arg smi "${SMI}" \
   --arg flash "${FLASH}" \
+  --arg pyv "${PY_VERSION}" \
   '{
     meta: {
       schema_version: 1,
@@ -103,7 +112,7 @@ jq -n \
     tt_python:  { "tt-smi": $smi, "tt-flash": $flash },
     firmware:   { version: "" },
     container_runtime: { runtime: "none" },
-    python_env: { method: "venv", location: "" }
+    python_env: { method: "venv", location: "", python_version: $pyv }
   }' > "${OUT}"
 
 log "wrote ${OUT}"
