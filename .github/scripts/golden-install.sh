@@ -15,6 +15,11 @@ set -euo pipefail
 
 GOLDEN_JSON="${GOLDEN_JSON:-/workspace/golden.json}"
 INSTALLER_URL="${INSTALLER_URL:-}"
+# Release source for install.sh / ttis.sh. Defaults to the upstream repo and the
+# golden.json `installer` pin; override INSTALLER_REPO / INSTALLER_TAG to test
+# against another release (e.g. a fork) without touching golden.json.
+INSTALLER_REPO="${INSTALLER_REPO:-tenstorrent/tt-installer}"
+INSTALLER_TAG="${INSTALLER_TAG:-}"
 HW="${GOLDEN_HW:-0}"
 FORCE_FLASH="${FORCE_FLASH:-0}"
 TTIS_FILE="${TTIS_FILE:-}"
@@ -84,8 +89,9 @@ SMI_VER="$(jq -r '.smi' "${GOLDEN_JSON}")"
 FLASH_VER="$(jq -r '.flash' "${GOLDEN_JSON}")"
 FW_VER="$(jq -r '.firmware' "${GOLDEN_JSON}")"
 
+INSTALLER_TAG="${INSTALLER_TAG:-v${INSTALLER_VER}}"
 if [[ -z "${INSTALLER_URL}" ]]; then
-  INSTALLER_URL="https://github.com/tenstorrent/tt-installer/releases/download/v${INSTALLER_VER}/install.sh"
+  INSTALLER_URL="https://github.com/${INSTALLER_REPO}/releases/download/${INSTALLER_TAG}/install.sh"
 fi
 
 record_installer_venv() {
@@ -112,12 +118,12 @@ if [[ -n "${TTIS_FILE}" ]]; then
     echo "ttis file not found at ${TTIS_FILE}" >&2
     exit 1
   fi
-  TTIS_URL="${TTIS_URL:-https://github.com/tenstorrent/tt-installer/releases/download/v${INSTALLER_VER}/ttis.sh}"
+  TTIS_URL="${TTIS_URL:-https://github.com/${INSTALLER_REPO}/releases/download/${INSTALLER_TAG}/ttis.sh}"
 
   echo "=== Golden install (import .ttis, no hardware) ==="
   echo "golden.json: ${GOLDEN_JSON}"
   echo "ttis file:   ${TTIS_FILE}"
-  echo "installer:   v${INSTALLER_VER} (${INSTALLER_URL})"
+  echo "installer:   ${INSTALLER_REPO}@${INSTALLER_TAG} (${INSTALLER_URL})"
 
   curl -fsSL "${INSTALLER_URL}" -o /tmp/tt-install.sh
   curl -fsSL "${TTIS_URL}" -o /tmp/ttis.sh

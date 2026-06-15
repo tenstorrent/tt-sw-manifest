@@ -46,8 +46,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Compile + test .ttis in ${{ matrix.image }}
+        env:
+          # TEMP: schema-capable install.sh + ttis.sh only exist in a fork release
+          # for now (tenstorrent/tt-installer has not released the schema feature).
+          # Once it does, delete this env block — the scripts default to
+          # tenstorrent/tt-installer at golden.json's `installer` pin.
+          INSTALLER_REPO: knauth/tt-installer
+          INSTALLER_TAG: v3.0.0
+          SKIP_INSTALLER_VERSION_CHECK: "1"
         run: |
           docker run --rm \
+            -e INSTALLER_REPO -e INSTALLER_TAG -e SKIP_INSTALLER_VERSION_CHECK \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             "${{ matrix.image }}" \

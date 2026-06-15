@@ -21,14 +21,17 @@ rm -rf /home/testuser/workspace
 cp -r /workspace /home/testuser/workspace
 chown -R testuser:testuser /home/testuser/workspace
 
-# Single quotes are intentional: ${HOME} must expand in testuser's shell, not root's.
-# shellcheck disable=SC2016
-su - testuser -c '
+# Forward the installer-source env into testuser's login shell (su - resets env).
+# Values expand here (root); \$HOME expands in testuser's shell.
+su - testuser -c "
   set -euo pipefail
-  cd "${HOME}/workspace"
-  export GOLDEN_JSON="${HOME}/workspace/golden.json"
+  export INSTALLER_REPO='${INSTALLER_REPO:-}'
+  export INSTALLER_TAG='${INSTALLER_TAG:-}'
+  export SKIP_INSTALLER_VERSION_CHECK='${SKIP_INSTALLER_VERSION_CHECK:-}'
+  export GOLDEN_JSON=\"\$HOME/workspace/golden.json\"
+  cd \"\$HOME/workspace\"
   bash .github/scripts/build-and-test-ttis.sh
-'
+"
 
 mkdir -p /workspace/dist
 cp /home/testuser/workspace/golden/*.ttis /workspace/dist/

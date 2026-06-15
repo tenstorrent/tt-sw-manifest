@@ -2,7 +2,11 @@
 # No-hardware compile → validate → install → verify → round-trip for one distro.
 #
 # Run as an unprivileged user (with passwordless sudo) inside the target distro,
-# from the repo root. Produces golden/<distro>.ttis and proves it installs.
+# from the repo root. Produces golden/<distro>.ttis and proves it installs via
+# tt-installer --import-schema.
+#
+# install.sh and ttis.sh both come from a tt-installer release, selected by
+# INSTALLER_REPO / INSTALLER_TAG (default: tenstorrent + golden.json `installer`).
 set -euo pipefail
 
 GOLDEN_JSON="${GOLDEN_JSON:-./golden.json}"
@@ -14,14 +18,16 @@ echo "Compiled: ${TTIS}"
 cat "${TTIS}"
 
 INSTALLER_VER="$(jq -r '.installer' "${GOLDEN_JSON}")"
-curl -fsSL \
-  "https://github.com/tenstorrent/tt-installer/releases/download/v${INSTALLER_VER}/ttis.sh" \
-  -o /tmp/ttis.sh
+INSTALLER_REPO="${INSTALLER_REPO:-tenstorrent/tt-installer}"
+INSTALLER_TAG="${INSTALLER_TAG:-v${INSTALLER_VER}}"
+TTIS_URL="${TTIS_URL:-https://github.com/${INSTALLER_REPO}/releases/download/${INSTALLER_TAG}/ttis.sh}"
+echo "── Fetch ttis.sh (${TTIS_URL}) ──"
+curl -fsSL "${TTIS_URL}" -o /tmp/ttis.sh
 
-echo "── Validate ${TTIS} (ttis.sh @ v${INSTALLER_VER}) ──"
+echo "── Validate ${TTIS} ──"
 bash /tmp/ttis.sh validate "${TTIS}"
 
-echo "── Install from ${TTIS} ──"
+echo "── Install golden stack from ${INSTALLER_REPO}@${INSTALLER_TAG} (--import-schema) ──"
 GOLDEN_JSON="${GOLDEN_JSON}" bash "${SCRIPT_DIR}/golden-install.sh" --ttis "${TTIS}"
 
 echo "── Verify installed versions match golden.json ──"

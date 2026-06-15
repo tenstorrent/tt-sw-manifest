@@ -202,7 +202,13 @@ echo ""
 echo "=== Installed vs golden.json ==="
 printf "| %-12s | %-14s | %-14s | %-4s |\n" "component" "golden" "installed" "ok"
 printf "|%s|%s|%s|%s|\n" "--------------" "--------------" "--------------" "------"
-check_row "installer" "${EXPECTED_INSTALLER}" "${ACTUAL_INSTALLER}"
+if [[ "${SKIP_INSTALLER_VERSION_CHECK:-0}" == "1" ]]; then
+  # Installing from a release whose version differs from golden.json's `installer`
+  # pin (e.g. a fork release used for testing). Report but don't fail on it.
+  printf "| %-12s | %-14s | %-14s | %-4s |\n" "installer" "${EXPECTED_INSTALLER}" "${ACTUAL_INSTALLER}" "SKIP"
+else
+  check_row "installer" "${EXPECTED_INSTALLER}" "${ACTUAL_INSTALLER}"
+fi
 check_row "kmd" "${EXPECTED_KMD}" "${ACTUAL_KMD}"
 check_row "smi" "${EXPECTED_SMI}" "${ACTUAL_SMI}"
 check_row "flash" "${EXPECTED_FLASH}" "${ACTUAL_FLASH}"
