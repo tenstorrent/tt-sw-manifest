@@ -1,0 +1,120 @@
+# Compile golden.json into per-distro .ttis files, test each via tt-installer
+# --import-schema (no hardware), and publish them as a GitHub Release on main.
+#
+# Replaces the old single-distro golden-no-hw.yml: importing the compiled .ttis
+# exercises the same no-hardware install, now across four distros.
+name: Golden — ttis
+run-name: Golden ttis · ${{ github.event_name }}
+
+on:
+  push:
+    branches:
+      - main
+      - renovate/**
+  pull_request:
+    paths:
+      - golden.json
+      - .github/workflows/golden-ttis.yml
+      - .github/workflows/golden-hw.yml
+      - .github/workflows/renovate.yml
+      - .github/scripts/**
+      - tests/metalium-workload.py
+  workflow_dispatch:
+
+concurrency:
+  group: golden-ttis-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Compile + test (${{ matrix.slug }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: "ubuntu:22.04", slug: "ubuntu-22.04" }
+          - { image: "ubuntu:24.04", slug: "ubuntu-24.04" }
+          - { image: "debian:13", slug: "debian-13" }
+          - { image: "fedora:43", slug: "fedora-43" }
+
+    steps:
+      - name: Checkout golden versions repo
+        uses: actions/checkout@v4
+
+      - name: Compile + test .ttis in ${{ matrix.image }}
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            "${{ matrix.image }}" \
+            bash /workspace/.github/scripts/ci-container-bootstrap.sh
+
+      - name: Upload compiled .ttis
+        uses: actions/upload-artifact@v4
+        with:
+          name: ttis-${{ matrix.slug }}
+          path: dist/*.ttis
+          if-no-files-found: error
+
+  release:
+    name: Publish golden release
+    needs: build-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download compiled .ttis files
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: ttis-*
+          merge-multiple: true
+
+      - name: Assemble release payload
+        run: |
+          set -euo pipefail
+          mkdir -p golden
+          cp artifacts/*.ttis golden/
+          cp golden.json golden/golden.json
+          (cd golden && ls -1 *.ttis) > golden/MANIFEST
+          echo "Release payload:"
+          ls -1 golden
+          tar -czf golden.tar.gz golden/
+
+      - name: Derive release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BASE="v$(date -u +%Y.%m.%d)"
+          SUFFIX=0
+          TAG="${BASE}"
+          while gh release view "${TAG}" >/dev/null 2>&1; do
+            SUFFIX=$((SUFFIX + 1))
+            TAG="${BASE}-${SUFFIX}"
+          done
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "Release tag: ${TAG}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Golden versions ${{ steps.tag.outputs.tag }}
+          files: |
+            golden.tar.gz
+            golden/*.ttis
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

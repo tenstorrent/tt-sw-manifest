@@ -22,11 +22,23 @@ Three workflows under `.github/workflows/`:
 
 | Workflow | When it runs | What it does |
 |----------|--------------|--------------|
-| **Golden — no hardware** (`golden-no-hw.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch | Install + verify inside `ubuntu:22.04` Docker on `ubuntu-latest` |
+| **Golden — ttis** (`golden-ttis.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch | Compile `golden.json` → per-distro `.ttis`, test each in Docker, and (on `main`) publish a release |
 | **Golden — hardware** (`golden-hw.yml`) | Manual dispatch; Renovate PRs (`renovate/*` branches) | Full HW suite on self-hosted n150 and p150b runners |
 | **Renovate** (`renovate.yml`) | Daily schedule + manual dispatch | Bump pins in `golden.json` via Renovate |
 
-Normal pushes and non-Renovate PRs run **no-hardware only**. Hardware runs when you dispatch **Golden — hardware**, or when a Renovate PR is open (both no-hw and hw run on those PRs).
+Normal pushes and non-Renovate PRs run **golden-ttis only** (no hardware). Hardware runs when you dispatch **Golden — hardware**, or when a Renovate PR is open (both golden-ttis and hw run on those PRs).
+
+### Golden — ttis (compile / test / release)
+
+For each distro (`ubuntu:22.04`, `ubuntu:24.04`, `debian:13`, `fedora:43`), in a fresh container as a non-root user:
+
+```
+compile-ttis.sh  →  ttis.sh validate  →  golden-install.sh --ttis  →  verify-versions.sh  →  import round-trip
+```
+
+`golden.json` is compiled into a per-distro **`.ttis`** file (tt-installer's state-file format), which is then installed via `tt-installer --import-schema` and verified. These non-hardware `.ttis` files cover the software stack only — `tenstorrent-tools` (hugepages), `sfpi`, firmware flashing, and the container runtime are all disabled (`firmware.version` is empty so importing never triggers a flash). `metal-version` / `metal-upstream-tag` have no place in the `.ttis` schema and stay HW-only concerns.
+
+On push to `main`, after all four distro jobs pass, the compiled `.ttis` files (plus `golden.json` and a `MANIFEST`) are packaged into `golden.tar.gz` and published as a **date-tagged GitHub Release** (`v2026.06.15`, with a `-N` suffix for same-day re-releases). PRs and `renovate/**` pushes run compile+test but do **not** release.
 
 ### Hardware step order
 
@@ -38,31 +50,41 @@ golden-install.sh --hw  →  verify-versions.sh  →  smi-reset.sh  →  ttnn-un
 
 Firmware is **not** flashed in CI (`--update-firmware off`). Runners keep their existing device firmware.
 
-### No-hardware step order
-
-Inside a fresh `ubuntu:22.04` container as a non-root user:
-
-```
-golden-install.sh  →  verify-versions.sh
-```
-
 ## Scripts
 
 All test scripts live in `.github/scripts/`.
 
+### `compile-ttis.sh`
+
+Compiles `golden.json` into a tt-installer `.ttis` state file (schema v1) for one distro. Versions are carried verbatim from `golden.json`; distro fields default to `/etc/os-release`. Prints the output path to stdout (logs to stderr).
+
+```bash
+compile-ttis.sh [--out <file>] [--distro-id <id>] [--distro-version <ver>] [--family apt|dnf]
+```
+
+### `build-and-test-ttis.sh`
+
+No-hardware orchestrator (run as a non-root user inside a distro): compile → `ttis.sh validate` → `golden-install.sh --ttis` → `verify-versions.sh` → import round-trip.
+
+### `ci-container-bootstrap.sh`
+
+Bootstraps a fresh distro container (installs prereqs, creates an unprivileged user), runs `build-and-test-ttis.sh`, and copies the compiled `.ttis` to `dist/` for upload. Called by `golden-ttis.yml`.
+
 ### `golden-install.sh`
 
-Downloads tt-installer `install.sh` at the pinned `installer` version and runs it non-interactively against `golden.json`.
+Downloads tt-installer `install.sh` at the pinned `installer` version and runs it non-interactively.
 
 ```bash
 golden-install.sh [--hw] [--force-flash]
+golden-install.sh --ttis <file>
 ```
 
 | Flag | Effect |
 |------|--------|
-| *(none)* | No-hw: KMD + venv (`tt-smi`, `tt-flash`). No hugepages, no metalium, no container runtime. |
+| *(none)* | No-hw: KMD + venv (`tt-smi`, `tt-flash`) from `golden.json` flags. No hugepages, no metalium, no container runtime. |
 | `--hw` | HW: adds hugepages, metalium release container, Docker/Podman, and pre-pulls `upstream-tests-bh` if `metal-upstream-tag` is set. Requires root. |
 | `--force-flash` | Enable firmware flash during install (default: off). |
+| `--ttis <file>` | No-hw install driven by a compiled `.ttis` via `--import-schema` (version pins come from the file, not flags). Also fetches `ttis.sh` from the pinned release. Mutually exclusive with `--hw`. |
 
 Records the installer venv path to `/tmp/tenstorrent-installer-venv.path`.
 

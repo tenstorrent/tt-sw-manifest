@@ -1,3 +1,8 @@
 logs/
 test.log
 *.log
+
+# Compiled .ttis build artifacts (generated in CI, published as releases)
+/golden/
+/dist/
+/artifacts/
