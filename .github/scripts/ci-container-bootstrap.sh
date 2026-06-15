@@ -11,7 +11,10 @@ if command -v apt-get >/dev/null 2>&1; then
   apt-get update
   apt-get install -y git python3-pip jq curl sudo ca-certificates
 else
-  dnf install -y git python3-pip jq curl sudo ca-certificates procps-ng findutils which
+  # libatomic: tt-smi's tt_umd extension dlopens libatomic.so.1 at runtime, which
+  # the minimal fedora image lacks (present on Ubuntu/Debian). See note below —
+  # the durable fix is to add it to tt-installer's Fedora dependency list.
+  dnf install -y git python3-pip jq curl sudo ca-certificates procps-ng findutils which libatomic
 fi
 
 id testuser >/dev/null 2>&1 || useradd -m -s /bin/bash testuser
