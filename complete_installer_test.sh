@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: © 2025-2026 Tenstorrent AI ULC
+# SPDX-License-Identifier: Apache-2.0
+#
 # Run the golden validation flow locally — same scripts and order as CI.
 #
 # No hardware (matches golden-no-hw.yml):
