@@ -63,6 +63,34 @@
     },
     {
       "customType": "regex",
+      "description": "sfpi (SFPI compiler toolchain → sfpi apt/dnf package)",
+      "managerFilePatterns": [
+        "/golden\\.json$/"
+      ],
+      "matchStrings": [
+        "\"sfpi\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "sfpi",
+      "packageNameTemplate": "tenstorrent/sfpi",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "tools (tt-system-tools → tenstorrent-tools apt/dnf package)",
+      "managerFilePatterns": [
+        "/golden\\.json$/"
+      ],
+      "matchStrings": [
+        "\"tools\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "tools",
+      "packageNameTemplate": "tenstorrent/tt-system-tools",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
       "description": "firmware (tt-system-firmware)",
       "managerFilePatterns": [
         "/golden\\.json$/"
@@ -118,9 +146,17 @@
         "smi",
         "flash",
         "firmware",
-        "installer"
+        "installer",
+        "tools"
       ],
       "extractVersion": "^v(?<version>.*)$"
+    },
+    {
+      "description": "SFPI: tags are plain semver (e.g. 7.60.0); ignore per-variant build snapshots like 7.60.0-nv-46064",
+      "matchDepNames": [
+        "sfpi"
+      ],
+      "allowedVersions": "/^[0-9]+\\.[0-9]+\\.[0-9]+$/"
     },
     {
       "description": "Firmware: only 19.x-style releases (ignore unrelated v80.x tags on GitHub)",

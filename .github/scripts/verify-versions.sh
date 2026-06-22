@@ -65,6 +65,8 @@ jq -r '
   "  kmd:           \(.kmd)",
   "  smi:           \(.smi)",
   "  flash:         \(.flash)",
+  "  sfpi:          \(.sfpi // "(not set)")",
+  "  tools:         \(.tools // "(not set)")",
   "  firmware:      \(.firmware)",
   "  metal-version: \(.["metal-version"] // .["metalium-image-tag"] // "n/a")",
   "  metal-upstream-tag: \(.["metal-upstream-tag"] // "(not set)")"
@@ -93,14 +95,22 @@ read_installer_version() {
   printf '%s\n' "${v:-unknown}"
 }
 
-read_kmd_version() {
+# Installed version of a system (apt/dnf) package, or empty if not installed.
+read_system_pkg_version() {
+  local pkg="$1"
   if command -v dpkg-query >/dev/null 2>&1; then
-    dpkg-query -W -f='${Version}' tenstorrent-dkms 2>/dev/null && return
+    dpkg-query -W -f='${Version}' "${pkg}" 2>/dev/null && return
   fi
   if command -v rpm >/dev/null 2>&1; then
-    rpm -q --qf '%{VERSION}' tenstorrent-dkms 2>/dev/null && return
+    rpm -q --qf '%{VERSION}' "${pkg}" 2>/dev/null | grep -v 'not installed' && return
   fi
-  echo "unknown"
+  echo ""
+}
+
+read_kmd_version() {
+  local v
+  v="$(read_system_pkg_version tenstorrent-dkms)"
+  printf '%s\n' "${v:-unknown}"
 }
 
 read_cli_semver() {
@@ -193,11 +203,15 @@ EXPECTED_INSTALLER="$(jq -r '.installer' "${GOLDEN_JSON}")"
 EXPECTED_KMD="$(jq -r '.kmd' "${GOLDEN_JSON}")"
 EXPECTED_SMI="$(jq -r '.smi' "${GOLDEN_JSON}")"
 EXPECTED_FLASH="$(jq -r '.flash' "${GOLDEN_JSON}")"
+EXPECTED_SFPI="$(jq -r '.sfpi // empty' "${GOLDEN_JSON}")"
+EXPECTED_TOOLS="$(jq -r '.tools // empty' "${GOLDEN_JSON}")"
 
 ACTUAL_INSTALLER="$(read_installer_version)"
 ACTUAL_KMD="$(read_kmd_version)"
 ACTUAL_SMI="$(read_cli_semver tt-smi)"
 ACTUAL_FLASH="$(read_cli_semver tt-flash)"
+ACTUAL_SFPI="$(read_system_pkg_version sfpi)"
+ACTUAL_TOOLS="$(read_system_pkg_version tenstorrent-tools)"
 
 fail=0
 if ! run_python_cli_smoke_tests "${EXPECTED_SMI}" "${EXPECTED_FLASH}"; then
@@ -216,6 +230,24 @@ check_row() {
   printf "| %-12s | %-14s | %-14s | %-4s |\n" "${name}" "${expected}" "${actual}" "${ok}"
 }
 
+# For packages that are only installed on some paths (e.g. sfpi/tenstorrent-tools
+# in the no-hw export run, but not on the HW path): check when both a golden pin
+# and an installed version are present; otherwise report SKIP without failing.
+check_optional_row() {
+  local name="$1"
+  local expected="$2"
+  local actual="$3"
+  if [[ -z "${expected}" ]]; then
+    printf "| %-12s | %-14s | %-14s | %-4s |\n" "${name}" "(not pinned)" "${actual:-(absent)}" "SKIP"
+    return
+  fi
+  if [[ -z "${actual}" ]]; then
+    printf "| %-12s | %-14s | %-14s | %-4s |\n" "${name}" "${expected}" "(not installed)" "SKIP"
+    return
+  fi
+  check_row "${name}" "${expected}" "${actual}"
+}
+
 echo ""
 echo "=== Installed vs golden.json ==="
 printf "| %-12s | %-14s | %-14s | %-4s |\n" "component" "golden" "installed" "ok"
@@ -230,6 +262,8 @@ fi
 check_row "kmd" "${EXPECTED_KMD}" "${ACTUAL_KMD}"
 check_row "smi" "${EXPECTED_SMI}" "${ACTUAL_SMI}"
 check_row "flash" "${EXPECTED_FLASH}" "${ACTUAL_FLASH}"
+check_optional_row "sfpi" "${EXPECTED_SFPI}" "${ACTUAL_SFPI}"
+check_optional_row "tools" "${EXPECTED_TOOLS}" "${ACTUAL_TOOLS}"
 echo ""
 
 if [[ "${fail}" -ne 0 ]]; then

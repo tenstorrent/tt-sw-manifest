@@ -17,6 +17,17 @@ else
   dnf install -y git python3-pip jq curl sudo ca-certificates procps-ng findutils which libatomic
 fi
 
+# tenstorrent-tools runs `systemctl` in its post-install scriptlet (to enable the
+# hugepages unit). Containers have no systemd: on dnf/Fedora a non-zero scriptlet
+# aborts the whole rpm transaction, while apt/dpkg only logs and continues. We
+# install this package solely so --export-schema can resolve its version, so drop
+# in a no-op shim where systemctl is absent to keep the scriptlet (and the install)
+# happy. Harmless on images that already ship a real systemctl.
+if ! command -v systemctl >/dev/null 2>&1; then
+  printf '#!/bin/sh\nexit 0\n' > /usr/bin/systemctl
+  chmod 0755 /usr/bin/systemctl
+fi
+
 id testuser >/dev/null 2>&1 || useradd -m -s /bin/bash testuser
 echo "testuser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/testuser
 
@@ -38,5 +49,10 @@ su - testuser -c "
 
 mkdir -p /workspace/dist
 cp /home/testuser/workspace/golden/*.ttis /workspace/dist/
+# ttis_export writes via mktemp (mode 0600) + mv, so the exported .ttis is
+# owner-only. The upload-artifact step runs as the host runner user, not root, and
+# can't read a root-owned 0600 file. Make them world-readable (the .ttis is not
+# secret) so the upload succeeds.
+chmod 0644 /workspace/dist/*.ttis
 echo "Artifacts copied to /workspace/dist:"
-ls -1 /workspace/dist
+ls -1l /workspace/dist
