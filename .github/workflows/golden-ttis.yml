@@ -1,8 +1,10 @@
-# Compile golden.json into per-distro .ttis files, test each via tt-installer
-# --import-schema (no hardware), and publish them as a GitHub Release on main.
+# Install the golden.json stack in each distro container (no hardware), capture
+# the installed versions with tt-installer --export-schema into a per-distro
+# .ttis file, verify it, and publish the exported files as a GitHub Release on main.
 #
-# Replaces the old single-distro golden-no-hw.yml: importing the compiled .ttis
-# exercises the same no-hardware install, now across four distros.
+# The exported .ttis is the released artifact: tenstorrent-tools and sfpi versions
+# come from what actually installed; firmware is recorded from golden.json as
+# assumed-flashed (CI has no device to flash).
 name: Golden — ttis
 run-name: Golden ttis · ${{ github.event_name }}
 
@@ -30,7 +32,7 @@ permissions:
 
 jobs:
   build-test:
-    name: Compile + test (${{ matrix.slug }})
+    name: Install + export + test (${{ matrix.slug }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -45,7 +47,7 @@ jobs:
       - name: Checkout golden versions repo
         uses: actions/checkout@v4
 
-      - name: Compile + test .ttis in ${{ matrix.image }}
+      - name: Install + export + test .ttis in ${{ matrix.image }}
         env:
           # TEMP: the schema feature (install.sh --import-schema + ttis.sh) and the
           # uv-venv Python provisioning are only in a fork release for now.
@@ -64,7 +66,7 @@ jobs:
             "${{ matrix.image }}" \
             bash /workspace/.github/scripts/ci-container-bootstrap.sh
 
-      - name: Upload compiled .ttis
+      - name: Upload exported .ttis
         uses: actions/upload-artifact@v4
         with:
           name: ttis-${{ matrix.slug }}
@@ -82,7 +84,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download compiled .ttis files
+      - name: Download exported .ttis files
         uses: actions/download-artifact@v4
         with:
           path: artifacts

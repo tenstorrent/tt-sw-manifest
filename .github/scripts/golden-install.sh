@@ -4,6 +4,7 @@
 # Usage:
 #   golden-install.sh [--hw] [--force-flash]
 #   golden-install.sh --ttis <file>
+#   golden-install.sh --export <file>
 #
 #   --hw           Hardware runner: hugepages, metalium container, container runtime,
 #                  upstream-tests-bh pull. Requires root.
@@ -11,6 +12,13 @@
 #   --ttis <file>  No-hardware install driven by a compiled .ttis file via
 #                  tt-installer --import-schema (version pins come from the file,
 #                  not from individual flags). Mutually exclusive with --hw.
+#   --export <file> No-hardware install of the full host software stack (kmd +
+#                  tenstorrent-tools/hugepages + sfpi + tt-smi/tt-flash) at
+#                  golden.json pins, then tt-installer --export-schema captures the
+#                  actually-installed versions into <file>. Firmware is recorded
+#                  from golden.json (assumed-flashed; never actually flashed here)
+#                  and machine-specific python_env fields are normalized for
+#                  portability. Mutually exclusive with --hw and --ttis.
 set -euo pipefail
 
 GOLDEN_JSON="${GOLDEN_JSON:-/workspace/golden.json}"
@@ -23,12 +31,15 @@ INSTALLER_TAG="${INSTALLER_TAG:-}"
 HW="${GOLDEN_HW:-0}"
 FORCE_FLASH="${FORCE_FLASH:-0}"
 TTIS_FILE="${TTIS_FILE:-}"
+EXPORT_FILE="${EXPORT_FILE:-}"
+PY_VERSION="${PY_VERSION:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --hw) HW=1; shift ;;
     --force-flash) FORCE_FLASH=1; shift ;;
     --ttis) TTIS_FILE="${2:?--ttis requires a file path}"; shift 2 ;;
+    --export) EXPORT_FILE="${2:?--export requires a file path}"; shift 2 ;;
     -h | --help)
       sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -43,6 +54,15 @@ done
 if [[ "${HW}" -eq 1 && "${EUID}" -ne 0 ]]; then
   echo "Run as root (sudo) for --hw installs." >&2
   exit 1
+fi
+
+if [[ -n "${EXPORT_FILE}" && -n "${TTIS_FILE}" ]]; then
+  echo "--export and --ttis are mutually exclusive." >&2
+  exit 2
+fi
+if [[ -n "${EXPORT_FILE}" && "${HW}" -eq 1 ]]; then
+  echo "--export is a no-hardware path; do not combine with --hw." >&2
+  exit 2
 fi
 
 if [[ ! -f "${GOLDEN_JSON}" ]]; then
@@ -87,6 +107,8 @@ INSTALLER_VER="$(jq -r '.installer' "${GOLDEN_JSON}")"
 KMD_VER="$(jq -r '.kmd' "${GOLDEN_JSON}")"
 SMI_VER="$(jq -r '.smi' "${GOLDEN_JSON}")"
 FLASH_VER="$(jq -r '.flash' "${GOLDEN_JSON}")"
+SFPI_VER="$(jq -r '.sfpi // empty' "${GOLDEN_JSON}")"
+TOOLS_VER="$(jq -r '.tools // empty' "${GOLDEN_JSON}")"
 FW_VER="$(jq -r '.firmware' "${GOLDEN_JSON}")"
 
 INSTALLER_TAG="${INSTALLER_TAG:-v${INSTALLER_VER}}"
@@ -193,8 +215,11 @@ if [[ "${HW}" -eq 1 ]]; then
   METALIUM_ARGS=(--install-metalium-container)
   CONTAINER_RUNTIME_ARGS=(--install-container-runtime "${CONTAINER_RUNTIME}")
   METALIUM_TAG_ARGS=(--metalium-image-tag "${METAL_VERSION}")
+  SFPI_ARGS=(--no-install-sfpi)
+  PYTHON_ARGS=(--python-choice new-venv)
+  EXPORT_ARGS=()
 else
-  echo "=== Golden install (no hardware) ==="
+  echo "=== Golden install (no hardware${EXPORT_FILE:+, export schema}) ==="
   echo "golden.json: ${GOLDEN_JSON}"
   echo "installer:   v${INSTALLER_VER} (${INSTALLER_URL})"
   echo "kmd:         ${KMD_VER}"
@@ -203,10 +228,44 @@ else
   echo "firmware:    ${FW_VER} (${FW_NOTE})"
 
   INSTALL_TIMEOUT=900
-  HUGE_PAGES_ARGS=(--no-install-hugepages)
   METALIUM_ARGS=(--no-install-metalium-container)
   CONTAINER_RUNTIME_ARGS=(--install-container-runtime no)
   METALIUM_TAG_ARGS=()
+
+  if [[ -n "${EXPORT_FILE}" ]]; then
+    # Export run: install the whole host software stack so --export-schema can
+    # resolve real versions for tenstorrent-tools (gated by --install-hugepages)
+    # and sfpi. The installer sources ttis.sh from its own directory, so fetch it
+    # next to install.sh (the import path does the same).
+    echo "sfpi:        ${SFPI_VER:-(latest)}"
+    echo "tools:       ${TOOLS_VER:-(latest)}"
+    echo "export:      ${EXPORT_FILE}"
+    HUGE_PAGES_ARGS=(--install-hugepages)
+    [[ -n "${TOOLS_VER}" ]] && HUGE_PAGES_ARGS+=(--systools-version "${TOOLS_VER}")
+    SFPI_ARGS=(--install-sfpi)
+    [[ -n "${SFPI_VER}" ]] && SFPI_ARGS+=(--sfpi-version "${SFPI_VER}")
+    EXPORT_ARGS=(--export-schema "${EXPORT_FILE}")
+    mkdir -p "$(dirname "${EXPORT_FILE}")"
+    # ttis_export refuses to overwrite an existing file (no --force from install.sh).
+    rm -f "${EXPORT_FILE}"
+    TTIS_URL="${TTIS_URL:-https://github.com/${INSTALLER_REPO}/releases/download/${INSTALLER_TAG}/ttis.sh}"
+    curl -fsSL "${TTIS_URL}" -o /tmp/ttis.sh
+  else
+    HUGE_PAGES_ARGS=(--no-install-hugepages)
+    SFPI_ARGS=(--no-install-sfpi)
+    EXPORT_ARGS=()
+  fi
+
+  # Fedora ships a Python that tt-umd (a tt-smi dependency) has no wheels for; pin
+  # and provision via uv so the venv — and the exported python_version — is
+  # reproducible. PY_VERSION may be overridden via the environment.
+  if [[ -z "${PY_VERSION}" && "$( . /etc/os-release 2>/dev/null; echo "${ID:-}" )" == "fedora" ]]; then
+    PY_VERSION="3.12"
+  fi
+  PYTHON_ARGS=(--python-choice new-venv)
+  if [[ -n "${PY_VERSION}" ]]; then
+    PYTHON_ARGS+=(--use-uv --python-version "${PY_VERSION}")
+  fi
 fi
 
 curl -fsSL "${INSTALLER_URL}" -o /tmp/tt-install.sh
@@ -220,19 +279,39 @@ timeout "${INSTALL_TIMEOUT}" bash /tmp/tt-install.sh \
   "${METALIUM_ARGS[@]}" \
   --no-install-metalium-models-container \
   --no-install-forge-container \
-  --no-install-sfpi \
+  "${SFPI_ARGS[@]}" \
   --no-install-inference-server \
   --no-install-studio \
   "${CONTAINER_RUNTIME_ARGS[@]}" \
-  --python-choice new-venv \
+  "${PYTHON_ARGS[@]}" \
   --reboot-option never \
   --kmd-version "${KMD_VER}" \
   --smi-version "${SMI_VER}" \
   --flash-version "${FLASH_VER}" \
   --fw-version "${FW_VER}" \
-  "${METALIUM_TAG_ARGS[@]}"
+  "${METALIUM_TAG_ARGS[@]}" \
+  ${EXPORT_ARGS[@]+"${EXPORT_ARGS[@]}"}
 
 record_installer_venv
+
+# Normalize the exported state file: record firmware from golden.json (assumed
+# flashed — we never flash without a device) and blank machine-specific python_env
+# fields so the golden is portable. python_version keeps the intended pin (Fedora)
+# rather than whatever interpreter happened to back the venv on this runner.
+if [[ -n "${EXPORT_FILE}" ]]; then
+  if [[ ! -f "${EXPORT_FILE}" ]]; then
+    echo "Expected exported schema at ${EXPORT_FILE} but it was not created" >&2
+    exit 1
+  fi
+  echo "Normalizing ${EXPORT_FILE}: firmware=${FW_VER} (assumed-flashed), python_version=${PY_VERSION:-(none)}, location cleared"
+  _tmp_ttis="$(mktemp)"
+  jq --arg fw "${FW_VER}" --arg pyv "${PY_VERSION}" \
+    '.firmware.version = $fw
+     | .python_env.location = ""
+     | .python_env.python_version = $pyv' \
+    "${EXPORT_FILE}" > "${_tmp_ttis}"
+  mv "${_tmp_ttis}" "${EXPORT_FILE}"
+fi
 
 if [[ "${HW}" -eq 1 ]]; then
   TT_METALIUM_WRAPPER="${HOME}/.local/bin/tt-metalium"
