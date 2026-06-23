@@ -82,10 +82,10 @@
         "/golden\\.json$/"
       ],
       "matchStrings": [
-        "\"tools\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+        "\"hugepages\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "datasourceTemplate": "github-releases",
-      "depNameTemplate": "tools",
+      "depNameTemplate": "hugepages",
       "packageNameTemplate": "tenstorrent/tt-system-tools",
       "versioningTemplate": "semver"
     },
@@ -147,7 +147,7 @@
         "flash",
         "firmware",
         "installer",
-        "tools"
+        "hugepages"
       ],
       "extractVersion": "^v(?<version>.*)$"
     },
