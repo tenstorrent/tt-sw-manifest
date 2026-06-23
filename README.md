@@ -1,4 +1,4 @@
-# ttis-golden-versions
+# tt-sw-manifest
 
 Pinned Tenstorrent stack versions (`golden.json`) and CI that validates them the way a customer would install: run [tt-installer](https://github.com/tenstorrent/tt-installer) once, then exercise that same stack on hardware without re-flashing firmware or swapping KMD between steps.
 

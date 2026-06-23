@@ -4,7 +4,7 @@
 # One-time setup: Settings → Secrets → Actions → RENOVATE_TOKEN (org-approved fine-grained PAT).
 # Required repo permissions (read + write unless noted): Contents, Pull requests, Issues,
 # Workflows, Commit statuses; Dependabot alerts (read); Administration (read).
-# Optional org permission: Members (read). Repository access: only ttis-golden-versions.
+# Optional org permission: Members (read). Repository access: only tt-sw-manifest.
 name: Renovate
 
 on:
@@ -50,7 +50,7 @@ jobs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}")"
           if [[ "${http_code}" != "200" ]]; then
             echo "::error::PAT cannot read ${GITHUB_REPOSITORY} (HTTP ${http_code})."
-            echo "Ensure resource owner is tenstorrent, repo access is ttis-golden-versions only, and org SSO is authorized."
+            echo "Ensure resource owner is tenstorrent, repo access is tt-sw-manifest only, and org SSO is authorized."
             cat /tmp/repo.json
             exit 1
           fi
