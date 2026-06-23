@@ -108,7 +108,7 @@ KMD_VER="$(jq -r '.kmd' "${GOLDEN_JSON}")"
 SMI_VER="$(jq -r '.smi' "${GOLDEN_JSON}")"
 FLASH_VER="$(jq -r '.flash' "${GOLDEN_JSON}")"
 SFPI_VER="$(jq -r '.sfpi // empty' "${GOLDEN_JSON}")"
-TOOLS_VER="$(jq -r '.tools // empty' "${GOLDEN_JSON}")"
+TOOLS_VER="$(jq -r '.hugepages // empty' "${GOLDEN_JSON}")"
 FW_VER="$(jq -r '.firmware' "${GOLDEN_JSON}")"
 
 INSTALLER_TAG="${INSTALLER_TAG:-v${INSTALLER_VER}}"

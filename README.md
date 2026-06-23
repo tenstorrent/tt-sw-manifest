@@ -11,7 +11,7 @@ Pinned Tenstorrent stack versions (`golden.json`) and CI that validates them the
 | `smi` | `--smi-version` → `tt-smi` in installer venv |
 | `flash` | `--flash-version` → `tt-flash` in installer venv |
 | `sfpi` | `--sfpi-version` → `sfpi` (from [tenstorrent/sfpi](https://github.com/tenstorrent/sfpi)) |
-| `tools` | `--systools-version` → `tenstorrent-tools` (from [tenstorrent/tt-system-tools](https://github.com/tenstorrent/tt-system-tools), installed with hugepages) |
+| `hugepages` | `--systools-version` → `tenstorrent-tools` (from [tenstorrent/tt-system-tools](https://github.com/tenstorrent/tt-system-tools), installed with hugepages) |
 | `firmware` | `--fw-version`; never flashed in CI, but recorded in the exported `.ttis` as assumed-flashed |
 | `metal-version` | `--metalium-image-tag` → `tt-metalium-ubuntu-22.04-release-amd64` (HW install + ttnn unit test) |
 | `metal-upstream-tag` | `upstream-tests-bh` image tag (reserved; upstream test not in CI yet) |
