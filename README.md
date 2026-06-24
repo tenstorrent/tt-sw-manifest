@@ -2,6 +2,12 @@
 
 Pinned Tenstorrent stack versions (`golden.json`) and CI that validates them the way a customer would install: run [tt-installer](https://github.com/tenstorrent/tt-installer) once, then exercise that same stack on hardware without re-flashing firmware or swapping KMD between steps.
 
+## Important Notice
+
+**This is a staging and testing repository only.** It is used internally by Tenstorrent for validating golden versions of the Tenstorrent software stack. This repository is provided as-is for reference purposes.
+
+**Please do not open issues or pull requests in this repository.** They will be closed without review. For issues with specific Tenstorrent software components, please refer to the appropriate component repositories.
+
 ## `golden.json`
 
 | Field | Passed to tt-installer / used by |
@@ -157,8 +163,18 @@ sudo ./complete_installer_test.sh --force-flash
 - **Self-hosted runners** may log `sudo: unable to resolve host ubuntu` when the hostname is missing from `/etc/hosts`. Harmless. To silence: `echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts`
 - **Upstream image tags** on `upstream-tests-bh` are CI dev tags (e.g. `v0.71.0-dev20260516-…`), not the same as release `metal-version` tags on the metalium image.
 
+## Contributing
+
+This is a staging and testing repository only. Please do not open issues or submit pull requests. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+For issues with Tenstorrent software components, please refer to the appropriate component repositories.
+
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
+This project is licensed under the Apache License, Version 2.0, except where specified. See the following files for complete licensing information:
 
-Copyright (c) 2025-2026 Tenstorrent AI ULC
+- [LICENSE](LICENSE) — Overall license for this project
+- [LICENSE_understanding.txt](LICENSE_understanding.txt) — Additional clarifications about the Apache 2.0 license application
+- [NOTICE](NOTICE) — Copyright and attribution notices
+
+Copyright (c) 2025-2026 Tenstorrent USA, Inc.
