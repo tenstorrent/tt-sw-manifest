@@ -2,18 +2,24 @@
 # ttnn unit test (tt-metalium release), and metal upstream (upstream-tests-bh).
 # Runners mirror tenstorrent/tt-smi/.github/workflows/test.yml (test-hardware job).
 #
-# Runs on workflow_dispatch, or on Renovate PRs (renovate/* branches).
+# Runs on push to main / renovate/**, PRs touching golden files, workflow_dispatch,
+# or when called by golden-release.yml.
 # Self-hosted runners may log "sudo: unable to resolve host ubuntu" when hostname is not in
 # /etc/hosts — harmless. To silence: echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts
 name: Golden — hardware
 run-name: Golden hw · ${{ github.event_name }}
 
 on:
+  push:
+    branches:
+      - main
+      - renovate/**
   pull_request:
     paths:
       - golden.json
       - .github/workflows/golden-ttis.yml
       - .github/workflows/golden-hw.yml
+      - .github/workflows/golden-release.yml
       - .github/workflows/renovate.yml
       - .github/scripts/**
       - tests/metalium-workload.py
@@ -23,6 +29,7 @@ on:
         description: Why you are running this workflow (optional)
         required: false
         type: string
+  workflow_call:
 
 concurrency:
   group: golden-hw-${{ github.ref }}
@@ -34,9 +41,6 @@ permissions:
 jobs:
   golden-hw-integration:
     name: Golden hw (${{ matrix.runner }})
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && startsWith(github.head_ref, 'renovate/'))
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

@@ -26,17 +26,18 @@ Pinned Tenstorrent stack versions (`golden.json`) and CI that validates them the
 
 ## CI workflows
 
-Three workflows under `.github/workflows/`:
+Four workflows under `.github/workflows/`:
 
 | Workflow | When it runs | What it does |
 |----------|--------------|--------------|
-| **Golden — ttis** (`golden-ttis.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch | Install the `golden.json` stack in each distro container, export a per-distro `.ttis`, verify it, and (on `main`) publish a release |
-| **Golden — hardware** (`golden-hw.yml`) | Manual dispatch; Renovate PRs (`renovate/*` branches) | Full HW suite on self-hosted n150 and p150b runners |
+| **Golden — ttis** (`golden-ttis.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch | Install the `golden.json` stack in each distro container, export a per-distro `.ttis`, and verify it |
+| **Golden — hardware** (`golden-hw.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch; called by release workflow | Full HW suite on self-hosted n150 and p150b runners |
+| **Golden — release** (`golden-release.yml`) | Manual dispatch from `main` only | Re-run no-hw + HW validation, then publish a date-tagged GitHub Release |
 | **Renovate** (`renovate.yml`) | Daily schedule + manual dispatch | Bump pins in `golden.json` via Renovate |
 
-Normal pushes and non-Renovate PRs run **golden-ttis only** (no hardware). Hardware runs when you dispatch **Golden — hardware**, or when a Renovate PR is open (both golden-ttis and hw run on those PRs).
+Pushes to `main` / `renovate/**` and PRs touching golden files run **both** golden-ttis and golden-hw.
 
-### Golden — ttis (install / export / test / release)
+### Golden — ttis (install / export / test)
 
 A matrix of four distros — `ubuntu:22.04`, `ubuntu:24.04`, `debian:13`, `fedora:43` — each in a fresh container as a non-root user:
 
@@ -66,7 +67,7 @@ golden-install.sh --export  →  ttis.sh validate  →  verify-versions.sh  → 
 
 **Fedora / Python.** Fedora 43 ships Python 3.14, which `tt-umd` (a `tt-smi` dependency) has no distribution for. The Fedora `.ttis` pins `python_env.python_version: 3.12`; on import tt-installer creates the venv with `uv venv --python 3.12` (installing `uv` first if absent). The Fedora test container also installs `libatomic` — a runtime dependency of `tt-smi`'s `tt_umd` extension that the minimal image lacks (Ubuntu/Debian already ship it).
 
-On push to `main`, after all four distro jobs pass, the exported `.ttis` files (plus `golden.json` and a `MANIFEST`) are packaged into `golden.tar.gz` and published as a **date-tagged GitHub Release** (`v2026.06.15`, with a `-N` suffix for same-day re-releases). PRs and `renovate/**` pushes run install+export+test but do **not** release.
+Dispatch **Golden — release** from `main` after no-hw and HW validation pass. The workflow re-runs both suites, then packages the exported `.ttis` files (plus `golden.json` and a `MANIFEST`) into `golden.tar.gz` and publishes a **date-tagged GitHub Release** (`v2026.06.15`, with a `-N` suffix for same-day re-releases). Routine CI (push/PR) does **not** publish a release.
 
 ### Hardware step order
 
