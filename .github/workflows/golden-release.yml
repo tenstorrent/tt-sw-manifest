@@ -1,0 +1,89 @@
+# Manual release gate: re-run no-hardware (ttis) + hardware validation, then publish
+# a date-tagged GitHub Release from the exported .ttis artifacts.
+#
+# Dispatch from main after golden.json changes have merged and routine CI is green.
+name: Golden — release
+run-name: Golden release · ${{ github.event_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Why you are cutting a release (optional)
+        required: false
+        type: string
+
+concurrency:
+  group: golden-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ttis:
+    name: No-hardware validation
+    uses: ./.github/workflows/golden-ttis.yml
+
+  hw:
+    name: Hardware validation
+    uses: ./.github/workflows/golden-hw.yml
+
+  release:
+    name: Publish golden release
+    needs: [ttis, hw]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download exported .ttis files
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: ttis-*
+          merge-multiple: true
+
+      - name: Assemble release payload
+        run: |
+          set -euo pipefail
+          mkdir -p golden
+          cp artifacts/*.ttis golden/
+          cp golden.json golden/golden.json
+          (cd golden && ls -1 *.ttis) > golden/MANIFEST
+          echo "Release payload:"
+          ls -1 golden
+          tar -czf golden.tar.gz golden/
+
+      - name: Derive release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BASE="v$(date -u +%Y.%m.%d)"
+          SUFFIX=0
+          TAG="${BASE}"
+          while gh release view "${TAG}" >/dev/null 2>&1; do
+            SUFFIX=$((SUFFIX + 1))
+            TAG="${BASE}-${SUFFIX}"
+          done
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "Release tag: ${TAG}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Golden versions ${{ steps.tag.outputs.tag }}
+          files: |
+            golden.tar.gz
+            golden/*.ttis
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
