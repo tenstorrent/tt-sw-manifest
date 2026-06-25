@@ -1,5 +1,5 @@
 # Manual release gate: re-run no-hardware (ttis) + hardware validation, then publish
-# a date-tagged GitHub Release from the exported .ttis artifacts.
+# golden.json (with test-sha) and per-distro .ttis files as a GitHub Release.
 #
 # Dispatch from main after golden.json changes have merged and routine CI is green.
 name: Golden — release
@@ -48,15 +48,16 @@ jobs:
           merge-multiple: true
 
       - name: Assemble release payload
+        env:
+          TEST_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          mkdir -p golden
-          cp artifacts/*.ttis golden/
-          cp golden.json golden/golden.json
-          (cd golden && ls -1 *.ttis) > golden/MANIFEST
+          mkdir -p release
+          find artifacts -name '*.ttis' -exec cp -t release/ {} +
+          jq --arg sha "${TEST_SHA}" '. + {"test-sha": $sha}' golden.json > release/golden.json
           echo "Release payload:"
-          ls -1 golden
-          tar -czf golden.tar.gz golden/
+          ls -1 release
+          jq . release/golden.json
 
       - name: Derive release tag
         id: tag
@@ -79,9 +80,10 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: Golden versions ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           files: |
-            golden.tar.gz
-            golden/*.ttis
+            release/golden.json
+            release/*.ttis
           draft: false
           prerelease: false
           generate_release_notes: true

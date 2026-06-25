@@ -21,6 +21,7 @@ Pinned Tenstorrent stack versions (`golden.json`) and CI that validates them the
 | `firmware` | `--fw-version`; never flashed in CI, but recorded in the exported `.ttis` as assumed-flashed |
 | `metal-version` | `--metalium-image-tag` → `tt-metalium-ubuntu-22.04-release-amd64` (HW install + ttnn unit test) |
 | `metal-upstream-tag` | `upstream-tests-bh` image tag (reserved; upstream test not in CI yet) |
+| `test-sha` | **Release artifact only** — commit on `main` that golden-ttis and golden-hw passed when the release was cut (not present in the repo copy of `golden.json`) |
 
 [Renovate](renovate.json) opens grouped PRs when these pins change.
 
@@ -67,7 +68,7 @@ golden-install.sh --export  →  ttis.sh validate  →  verify-versions.sh  → 
 
 **Fedora / Python.** Fedora 43 ships Python 3.14, which `tt-umd` (a `tt-smi` dependency) has no distribution for. The Fedora `.ttis` pins `python_env.python_version: 3.12`; on import tt-installer creates the venv with `uv venv --python 3.12` (installing `uv` first if absent). The Fedora test container also installs `libatomic` — a runtime dependency of `tt-smi`'s `tt_umd` extension that the minimal image lacks (Ubuntu/Debian already ship it).
 
-Dispatch **Golden — release** from `main` after no-hw and HW validation pass. The workflow re-runs both suites, then packages the exported `.ttis` files (plus `golden.json` and a `MANIFEST`) into `golden.tar.gz` and publishes a **date-tagged GitHub Release** (`v2026.06.15`, with a `-N` suffix for same-day re-releases). Routine CI (push/PR) does **not** publish a release.
+Dispatch **Golden — release** from `main` after no-hw and HW validation pass. The workflow re-runs both suites, then publishes `golden.json` (with `test-sha` set to the dispatch commit) and the four per-distro `.ttis` files as a **date-tagged GitHub Release** (`v2026.06.15`, with a `-N` suffix for same-day re-releases). Routine CI (push/PR) does **not** publish a release.
 
 ### Hardware step order
 
