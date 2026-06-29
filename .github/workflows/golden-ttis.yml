@@ -57,7 +57,7 @@ jobs:
           # one cut after backporting the install.m4/ttis.sh uv-venv changes.
           # Delete this block once tenstorrent/tt-installer releases them; the
           # scripts then default to tenstorrent/tt-installer at golden.json's pin.
-          INSTALLER_REPO: knauth/tt-installer
+          INSTALLER_REPO: tenstorrent/tt-installer
           INSTALLER_TAG: v3.1.0
           SKIP_INSTALLER_VERSION_CHECK: "1"
         run: |
