@@ -4,9 +4,9 @@ Pinned Tenstorrent stack versions (`golden.json`) and CI that validates them the
 
 ## Important Notice
 
-**This is a staging and testing repository only.** It is used internally by Tenstorrent for validating golden versions of the Tenstorrent software stack. This repository is provided as-is for reference purposes.
+**This is a staging and testing repository only.** It is used internally by Tenstorrent for validating golden versions of the Tenstorrent software stack. This repository is provided as-is for reference purposes. If you're a user looking to tweak your stack, please do so manually using [tt-installer arguments](https://github.com/tenstorrent/tt-installer/wiki/Customizing-your-installation#advanced-examples) or by installing relevant components from source.
 
-**Please do not open issues or pull requests in this repository.** They will be closed without review. For issues with specific Tenstorrent software components, please refer to the appropriate component repositories.
+**Please do not open issues or pull requests in this repository.** They will be closed without review. For issues with specific Tenstorrent software components, please refer to the appropriate component repositories. For issues with the installation process, refer to [tt-installer](https://github.com/tenstorrent/tt-installer).
 
 ## `golden.json`
 
