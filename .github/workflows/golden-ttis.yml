@@ -58,7 +58,7 @@ jobs:
           # Delete this block once tenstorrent/tt-installer releases them; the
           # scripts then default to tenstorrent/tt-installer at golden.json's pin.
           INSTALLER_REPO: tenstorrent/tt-installer
-          INSTALLER_TAG: v3.1.0
+          INSTALLER_TAG: v3.2.0
           SKIP_INSTALLER_VERSION_CHECK: "1"
         run: |
           docker run --rm \
