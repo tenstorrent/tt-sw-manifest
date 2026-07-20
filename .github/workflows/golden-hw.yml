@@ -46,8 +46,8 @@ jobs:
       fail-fast: false
       matrix:
         runner:
-          - tt-ubuntu-2204-n150-stable
-          - tt-ubuntu-2204-p150b-stable
+          - p100a # syseng-gh-01
+          - p150a # syseng-gh-03
 
     steps:
       - name: Checkout golden versions repo
