@@ -59,8 +59,13 @@ jobs:
       - name: Install golden stack (tt-installer)
         env:
           GOLDEN_JSON: ${{ github.workspace }}/golden.json
-        # No flashing of firmware! Runners keep existing firmware.
-        run: sudo env GOLDEN_JSON="${GOLDEN_JSON}" bash .github/scripts/golden-install.sh --hw
+        run: |
+          for i in {1..60}; do
+            sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break
+            echo "Waiting for apt lock..."
+            sleep 5
+          done
+          sudo env GOLDEN_JSON="${GOLDEN_JSON}" bash .github/scripts/golden-install.sh --hw
 
       - name: Verify installed smi matches golden.json
         env:
