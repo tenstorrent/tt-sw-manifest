@@ -65,7 +65,8 @@ jobs:
             echo "Waiting for apt lock..."
             sleep 5
           done
-          sudo env GOLDEN_JSON="${GOLDEN_JSON}" bash .github/scripts/golden-install.sh --hw
+          echo "Flashing firmware to the golden.json pin via tt-flash"
+          sudo env GOLDEN_JSON="${GOLDEN_JSON}" bash .github/scripts/golden-install.sh --hw --force-flash
 
       - name: Verify installed smi matches golden.json
         env:
