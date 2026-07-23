@@ -46,8 +46,8 @@ jobs:
       fail-fast: false
       matrix:
         runner:
-          - tt-ubuntu-2204-n150-stable
-          - tt-ubuntu-2204-p150b-stable
+          - p100a # syseng-gh-01
+          - p150a # syseng-gh-03
 
     steps:
       - name: Checkout golden versions repo
@@ -59,8 +59,14 @@ jobs:
       - name: Install golden stack (tt-installer)
         env:
           GOLDEN_JSON: ${{ github.workspace }}/golden.json
-        # No flashing of firmware! Runners keep existing firmware.
-        run: sudo env GOLDEN_JSON="${GOLDEN_JSON}" bash .github/scripts/golden-install.sh --hw
+        run: |
+          for i in {1..60}; do
+            sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break
+            echo "Waiting for apt lock..."
+            sleep 5
+          done
+          echo "Flashing firmware to the golden.json pin via tt-flash"
+          sudo env GOLDEN_JSON="${GOLDEN_JSON}" bash .github/scripts/golden-install.sh --hw --force-flash
 
       - name: Verify installed smi matches golden.json
         env:
