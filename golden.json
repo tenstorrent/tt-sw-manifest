@@ -6,5 +6,5 @@
   "hugepages": "1.4.1",
   "firmware": "19.11.0",
   "metal-version": "v0.72.0",
-  "installer": "3.2.0"
+  "installer": "3.5.0"
 }
