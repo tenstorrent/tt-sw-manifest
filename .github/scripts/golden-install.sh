@@ -213,7 +213,8 @@ if [[ "${HW}" -eq 1 ]]; then
   INSTALL_TIMEOUT=1800
   HUGE_PAGES_ARGS=(--install-hugepages)
   METALIUM_ARGS=(--install-metalium-container)
-  CONTAINER_RUNTIME_ARGS=(--install-container-runtime "${CONTAINER_RUNTIME}")
+  # Runners already have docker/podman; do not let the installer install one.
+  CONTAINER_RUNTIME_ARGS=(--install-container-runtime none)
   METALIUM_TAG_ARGS=(--metalium-image-tag "${METAL_VERSION}")
   SFPI_ARGS=(--no-install-sfpi)
   PYTHON_ARGS=(--python-choice new-venv)
@@ -229,7 +230,7 @@ else
 
   INSTALL_TIMEOUT=900
   METALIUM_ARGS=(--no-install-metalium-container)
-  CONTAINER_RUNTIME_ARGS=(--install-container-runtime no)
+  CONTAINER_RUNTIME_ARGS=(--install-container-runtime none)
   METALIUM_TAG_ARGS=()
 
   if [[ -n "${EXPORT_FILE}" ]]; then
