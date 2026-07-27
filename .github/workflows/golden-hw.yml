@@ -36,11 +36,36 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: write # skip-duplicate-actions (query/cancel workflow runs)
   contents: read
 
 jobs:
+  # After a clean rebase+merge, main has the same tree as the PR tip. Skip the
+  # post-merge push run when that PR (or any earlier run) already succeeded on
+  # the same content. See fkirc/skip-duplicate-actions same_content_newer.
+  # Later: add paths_ignore here if merge-only files should not force a re-run.
+  pre_job:
+    name: Skip duplicate check
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.set.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        # Only consider skipping pushes (typically main after merge). Always run
+        # on pull_request / workflow_dispatch / workflow_call (release gate).
+        if: github.event_name == 'push'
+        uses: fkirc/skip-duplicate-actions@v5.3.2
+        with:
+          concurrent_skipping: same_content_newer
+          skip_after_successful_duplicate: "true"
+          do_not_skip: '["pull_request", "workflow_dispatch", "schedule"]'
+      - id: set
+        run: echo "should_skip=${{ steps.skip_check.outputs.should_skip || 'false' }}" >> "$GITHUB_OUTPUT"
+
   golden-hw-integration:
     name: Golden hw (${{ matrix.runner }})
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
