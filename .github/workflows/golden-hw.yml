@@ -48,6 +48,7 @@ jobs:
         runner:
           - p100a # syseng-gh-01
           - p150a # syseng-gh-03
+          - p300a # yyz-zephyr-01
 
     steps:
       - name: Checkout golden versions repo
