@@ -75,19 +75,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install + export + test .ttis in ${{ matrix.image }}
-        env:
-          # TEMP: the schema feature (install.sh --import-schema + ttis.sh) and the
-          # uv-venv Python provisioning are only in a fork release for now.
-          # INSTALLER_TAG must point at the release that contains BOTH — i.e. the
-          # one cut after backporting the install.m4/ttis.sh uv-venv changes.
-          # Delete this block once tenstorrent/tt-installer releases them; the
-          # scripts then default to tenstorrent/tt-installer at golden.json's pin.
-          INSTALLER_REPO: tenstorrent/tt-installer
-          INSTALLER_TAG: v3.5.0
-          SKIP_INSTALLER_VERSION_CHECK: "1"
         run: |
+          # Uses tenstorrent/tt-installer at golden.json's `installer` pin
+          # (override with INSTALLER_REPO / INSTALLER_TAG if needed).
           docker run --rm \
-            -e INSTALLER_REPO -e INSTALLER_TAG -e SKIP_INSTALLER_VERSION_CHECK \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
             "${{ matrix.image }}" \

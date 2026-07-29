@@ -118,7 +118,7 @@ Activates the installer Python venv (`~/.tenstorrent-venv`, or `VENV_DIR` / path
 - `sfpi` and `tools` (`tenstorrent-tools`) match `golden.json` **when installed** — checked on the no-hw export run; reported as `SKIP` on paths that don't install them (e.g. HW)
 - `tt-smi -v`, `tt-flash -v`, `tt-smi -h`, `tt-flash -h` smoke tests pass
 
-Set `SKIP_INSTALLER_VERSION_CHECK=1` to report (not fail) the installer row when installing from a release whose version differs from the `installer` pin (e.g. the fork pin above). The script prints each CLI's raw output and exit code, so a failing `tt-smi`/`tt-flash` shows its traceback and a clear `FAIL` row instead of aborting silently.
+Set `SKIP_INSTALLER_VERSION_CHECK=1` to report (not fail) the installer row when installing from a release whose version differs from the `installer` pin. The script prints each CLI's raw output and exit code, so a failing `tt-smi`/`tt-flash` shows its traceback and a clear `FAIL` row instead of aborting silently.
 
 ### `smi-reset.sh`
 
