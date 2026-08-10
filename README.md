@@ -32,7 +32,7 @@ Four workflows under `.github/workflows/`:
 | Workflow | When it runs | What it does |
 |----------|--------------|--------------|
 | **Golden — ttis** (`golden-ttis.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch | Install the `golden.json` stack in each distro container, export a per-distro `.ttis`, and verify it |
-| **Golden — hardware** (`golden-hw.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch; called by release workflow | Full HW suite on self-hosted n150 and p150b runners |
+| **Golden — hardware** (`golden-hw.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch; called by release workflow | Full HW suite on self-hosted p100a, p150a, and p300a runners; manual runs can test a tt-kmd commit |
 | **Golden — release** (`golden-release.yml`) | Manual dispatch from `main` only | Re-run no-hw + HW validation, then publish a date-tagged GitHub Release |
 | **Renovate** (`renovate.yml`) | Daily schedule + manual dispatch | Bump pins in `golden.json` via Renovate |
 
@@ -70,13 +70,38 @@ Dispatch **Golden — release** from `main` after no-hw and HW validation pass. 
 
 ### Hardware step order
 
-On `tt-ubuntu-2204-n150-stable` and `tt-ubuntu-2204-p150b-stable`:
+On the `p100a`, `p150a`, and `p300a` runners:
 
 ```
-golden-install.sh --hw  →  verify-versions.sh  →  smi-reset.sh  →  ttnn-unit-test.sh
+golden-install.sh --hw --force-flash
+  →  optionally build/install requested tt-kmd ref
+  →  verify-versions.sh
+  →  smi-reset.sh
+  →  ttnn-unit-test.sh
 ```
 
-Firmware is **not** flashed in CI (`--update-firmware off`). Runners keep their existing device firmware.
+Hardware CI flashes firmware to the `golden.json` pin.
+
+### Testing an unreleased tt-kmd commit
+
+Use the **Golden — hardware** workflow's **Run workflow** form and enter a commit,
+tag, or branch from `tenstorrent/tt-kmd` in `kmd_ref`. Leave `kmd_ref` empty for
+the normal golden KMD test.
+
+For a requested ref, each hardware runner:
+
+1. Installs the normal golden stack.
+2. Checks out and resolves the requested tt-kmd ref to an exact commit.
+3. Builds its `tenstorrent-dkms` Debian package and installs it in place of the
+   golden KMD.
+4. Records the requested ref, resolved commit, package version, and package
+   SHA-256 in the workflow summary.
+5. Runs the normal version checks, ten PCI resets, and TTNN workload against
+   that driver.
+
+This path builds directly from git and does not require a tt-kmd release or PPA
+publication. It is available only on manual dispatch; routine push, PR, and
+golden-release runs continue to test the `golden.json` KMD.
 
 ## Scripts
 

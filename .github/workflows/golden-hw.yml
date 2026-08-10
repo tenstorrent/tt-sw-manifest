@@ -7,7 +7,7 @@
 # Self-hosted runners may log "sudo: unable to resolve host ubuntu" when hostname is not in
 # /etc/hosts — harmless. To silence: echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts
 name: Golden — hardware
-run-name: Golden hw · ${{ github.event_name }}
+run-name: Golden hw · ${{ github.event_name }}${{ inputs.kmd_ref && format(' · tt-kmd {0}', inputs.kmd_ref) || '' }}
 
 on:
   push:
@@ -25,6 +25,10 @@ on:
       - tests/metalium-workload.py
   workflow_dispatch:
     inputs:
+      kmd_ref:
+        description: tt-kmd commit, tag, or branch to build and test instead of the golden KMD
+        required: false
+        type: string
       reason:
         description: Why you are running this workflow (optional)
         required: false
@@ -94,7 +98,66 @@ jobs:
           echo "Flashing firmware to the golden.json pin via tt-flash"
           sudo env GOLDEN_JSON="${GOLDEN_JSON}" bash .github/scripts/golden-install.sh --hw --force-flash
 
-      - name: Verify installed smi matches golden.json
+      - name: Checkout requested tt-kmd
+        if: inputs.kmd_ref != ''
+        uses: actions/checkout@v4
+        with:
+          repository: tenstorrent/tt-kmd
+          ref: ${{ inputs.kmd_ref }}
+          path: tt-kmd-under-test
+
+      - name: Build and install requested tt-kmd
+        if: inputs.kmd_ref != ''
+        env:
+          REQUESTED_KMD_REF: ${{ inputs.kmd_ref }}
+        run: |
+          set -euo pipefail
+
+          resolved_sha="$(git -C tt-kmd-under-test rev-parse HEAD)"
+          echo "Building tt-kmd ${REQUESTED_KMD_REF} (${resolved_sha})"
+
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev dkms "linux-headers-$(uname -r)"
+          (
+            cd tt-kmd-under-test
+            ./tools/build_debs.sh
+          )
+
+          mapfile -t packages < <(compgen -G "${GITHUB_WORKSPACE}/tt-kmd-under-test/tenstorrent-dkms_*.deb")
+          if [[ "${#packages[@]}" -ne 1 ]]; then
+            echo "Expected exactly one tenstorrent-dkms package, found ${#packages[@]}" >&2
+            printf '  %s\n' "${packages[@]:-}"
+            exit 1
+          fi
+          package="${packages[0]}"
+          package_sha="$(sha256sum "${package}" | awk '{print $1}')"
+
+          if lsmod | awk '$1 == "tenstorrent" { found=1 } END { exit !found }'; then
+            sudo modprobe -r tenstorrent
+          fi
+          sudo apt-get remove -y tenstorrent-dkms
+          sudo apt-get install -y "${package}"
+          sudo modprobe tenstorrent
+          sudo udevadm settle
+
+          installed_version="$(dpkg-query -W -f='${Version}' tenstorrent-dkms)"
+          dkms status tenstorrent
+          modinfo tenstorrent
+
+          # Subsequent verification must expect the package version actually
+          # produced by this commit (for example, Debian maps "-pre" to "~pre").
+          jq --arg version "${installed_version}" '.kmd = $version' golden.json > golden.json.tmp
+          mv golden.json.tmp golden.json
+
+          {
+            echo "### tt-kmd under test"
+            echo "- Requested ref: \`${REQUESTED_KMD_REF}\`"
+            echo "- Resolved commit: \`${resolved_sha}\`"
+            echo "- Package version: \`${installed_version}\`"
+            echo "- Package SHA-256: \`${package_sha}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Verify installed stack matches golden.json
         env:
           GOLDEN_JSON: ${{ github.workspace }}/golden.json
           VENV_DIR: /root/.tenstorrent-venv
