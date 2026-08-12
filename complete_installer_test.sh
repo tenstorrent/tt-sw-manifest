@@ -36,7 +36,7 @@ Usage: $(basename "$0") [OPTIONS]
 Run .github/scripts in the same order as CI and print a pass/fail summary.
 
 Scripts (no-hw):  golden-install.sh → verify-versions.sh
-Scripts (hw):     golden-install.sh --hw → verify-versions.sh → smi-reset.sh → ttnn-unit-test.sh
+Scripts (hw):     golden-install.sh --hw → verify-versions.sh → smi-reset.sh → ttnn-unit-test.sh → metal-upstream.sh
 
 Options:
   --hw              Force hardware flow (requires root; needs /dev/tenstorrent for full pass).
@@ -219,7 +219,10 @@ if [[ "${SKIP_INSTALL}" -eq 0 ]]; then
     install_args+=(--force-flash)
   fi
   run_script "golden-install.sh" \
-    env GOLDEN_JSON="${GOLDEN_JSON}" bash "${SCRIPTS_DIR}/golden-install.sh" "${install_args[@]}" || true
+    env \
+      GOLDEN_JSON="${GOLDEN_JSON}" \
+      GOLDEN_RUNNER_LABEL="${RUNNER_LABEL}" \
+      bash "${SCRIPTS_DIR}/golden-install.sh" "${install_args[@]}" || true
 else
   record_skip "golden-install.sh" "--skip-install"
 fi
@@ -245,6 +248,14 @@ if [[ "${MODE}" == hw ]]; then
       GOLDEN_RUNNER_LABEL="${RUNNER_LABEL}" \
       GITHUB_RUNNER_NAME="${RUNNER_LABEL}" \
       bash "${SCRIPTS_DIR}/ttnn-unit-test.sh" || true
+
+  # --- metal-upstream.sh ---
+  run_script "metal-upstream.sh" \
+    env \
+      GOLDEN_JSON="${GOLDEN_JSON}" \
+      GOLDEN_RUNNER_LABEL="${RUNNER_LABEL}" \
+      GITHUB_RUNNER_NAME="${RUNNER_LABEL}" \
+      bash "${SCRIPTS_DIR}/metal-upstream.sh" || true
 fi
 
 print_summary

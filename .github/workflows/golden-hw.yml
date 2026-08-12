@@ -85,6 +85,7 @@ jobs:
       - name: Install golden stack (tt-installer)
         env:
           GOLDEN_JSON: ${{ github.workspace }}/golden.json
+          GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
         run: |
           for i in {1..60}; do
             sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break
@@ -92,7 +93,10 @@ jobs:
             sleep 5
           done
           echo "Flashing firmware to the golden.json pin via tt-flash"
-          sudo env GOLDEN_JSON="${GOLDEN_JSON}" bash .github/scripts/golden-install.sh --hw --force-flash
+          sudo env \
+            GOLDEN_JSON="${GOLDEN_JSON}" \
+            GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
+            bash .github/scripts/golden-install.sh --hw --force-flash
 
       - name: Verify installed smi matches golden.json
         env:
@@ -118,15 +122,14 @@ jobs:
             GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
             bash .github/scripts/ttnn-unit-test.sh
 
-      #  Commenting this out for now - this will depend on the type of runner
-      # - name: Metal upstream tests (upstream-tests-bh)
-      #   timeout-minutes: 120
-      #   env:
-      #     GOLDEN_JSON: ${{ github.workspace }}/golden.json
-      #     GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
-      #   run: |
-      #     sudo -E env \
-      #       GOLDEN_JSON="${GOLDEN_JSON}" \
-      #       GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
-      #       GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
-      #       bash .github/scripts/metal-upstream.sh
+      - name: Metal upstream tests (upstream-tests-bh)
+        timeout-minutes: 120
+        env:
+          GOLDEN_JSON: ${{ github.workspace }}/golden.json
+          GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
+        run: |
+          sudo -E env \
+            GOLDEN_JSON="${GOLDEN_JSON}" \
+            GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
+            GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
+            bash .github/scripts/metal-upstream.sh

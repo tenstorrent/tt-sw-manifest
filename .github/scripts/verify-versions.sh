@@ -69,7 +69,7 @@ jq -r '
   "  hugepages:     \(.hugepages // "(not set)")",
   "  firmware:      \(.firmware)",
   "  metal-version: \(.["metal-version"] // .["metalium-image-tag"] // "n/a")",
-  "  metal-upstream-tag: \(.["metal-upstream-tag"] // "(not set)")"
+  "  metal-upstream-tag: \(.["metal-upstream-tag"] // "(fallback to metal-version)")"
 ' "${GOLDEN_JSON}"
 echo "venv: ${VENV_DIR}"
 echo ""
