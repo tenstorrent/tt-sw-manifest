@@ -20,7 +20,7 @@ Pinned Tenstorrent stack versions (`golden.json`) and CI that validates them the
 | `hugepages` | `--systools-version` → `tenstorrent-tools` (from [tenstorrent/tt-system-tools](https://github.com/tenstorrent/tt-system-tools), installed with hugepages) |
 | `firmware` | `--fw-version`; never flashed in CI, but recorded in the exported `.ttis` as assumed-flashed |
 | `metal-version` | `--metalium-image-tag` → `tt-metalium-ubuntu-22.04-release-amd64` (HW install + ttnn unit test) |
-| `metal-upstream-tag` | `upstream-tests-bh` image tag (reserved; upstream test not in CI yet) |
+| `metal-upstream-tag` | Optional pin for `upstream-tests-bh*`; if unset, HW CI falls back to `metal-version` |
 | `test-sha` | **Release artifact only** — commit on `main` that golden-ttis and golden-hw passed when the release was cut (not present in the repo copy of `golden.json`) |
 
 [Renovate](renovate.json) opens grouped PRs when these pins change.
@@ -32,7 +32,7 @@ Four workflows under `.github/workflows/`:
 | Workflow | When it runs | What it does |
 |----------|--------------|--------------|
 | **Golden — ttis** (`golden-ttis.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch | Install the `golden.json` stack in each distro container, export a per-distro `.ttis`, and verify it |
-| **Golden — hardware** (`golden-hw.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch; called by release workflow | Full HW suite on self-hosted n150 and p150b runners |
+| **Golden — hardware** (`golden-hw.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch; called by release workflow | Full HW suite on self-hosted p100a / p150a / p300a runners |
 | **Golden — release** (`golden-release.yml`) | Manual dispatch from `main` only | Re-run no-hw + HW validation, then publish a date-tagged GitHub Release |
 | **Renovate** (`renovate.yml`) | Daily schedule + manual dispatch | Bump pins in `golden.json` via Renovate |
 
@@ -70,13 +70,13 @@ Dispatch **Golden — release** from `main` after no-hw and HW validation pass. 
 
 ### Hardware step order
 
-On `tt-ubuntu-2204-n150-stable` and `tt-ubuntu-2204-p150b-stable`:
+On self-hosted `p100a`, `p150a`, and `p300a` runners:
 
 ```
-golden-install.sh --hw  →  verify-versions.sh  →  smi-reset.sh  →  ttnn-unit-test.sh
+golden-install.sh --hw --force-flash  →  verify-versions.sh  →  smi-reset.sh  →  ttnn-unit-test.sh  →  metal-upstream.sh
 ```
 
-Firmware is **not** flashed in CI (`--update-firmware off`). Runners keep their existing device firmware.
+`metal-upstream.sh` mirrors syseng `metal.yml`: mounts `/opt/tenstorrent/hf-models`, sets board `METAL_TARGET` / `HF_MODEL`, and runs `run_upstream_tests_vanilla.sh` in the matching `upstream-tests-bh*` image.
 
 ## Scripts
 
@@ -103,7 +103,7 @@ golden-install.sh --export <file>
 | Flag | Effect |
 |------|--------|
 | *(none)* | No-hw: KMD + venv (`tt-smi`, `tt-flash`) from `golden.json` flags. No hugepages/sfpi, no metalium, no container runtime. |
-| `--hw` | HW: adds hugepages, metalium release container, Docker/Podman, and pre-pulls `upstream-tests-bh` if `metal-upstream-tag` is set. Requires root. |
+| `--hw` | HW: adds hugepages, metalium release container, Docker/Podman, and pre-pulls the board’s `upstream-tests-bh*` image (`metal-upstream-tag` or `metal-version`). Requires root. |
 | `--force-flash` | Enable firmware flash during install (default: off). |
 | `--ttis <file>` | No-hw install driven by a compiled `.ttis` via `--import-schema` (version pins, Python version, etc. come from the file, not flags). Fetches both `install.sh` and `ttis.sh` from the release. Honors `INSTALL_EXTRA_ARGS` for extra installer flags. Mutually exclusive with `--hw`. |
 | `--export <file>` | No-hw install of the **full** host stack (KMD + `tenstorrent-tools`/hugepages + `sfpi` + venv) at `golden.json` pins, then `--export-schema` writes the installed versions to `<file>`. Afterward, firmware is recorded from `golden.json` (assumed-flashed; never actually flashed) and `python_env.location` is blanked for portability. Mutually exclusive with `--hw` / `--ttis`. |
@@ -130,7 +130,7 @@ Pulls `ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:<meta
 
 ### `metal-upstream.sh`
 
-Runs `upstream-tests-bh` container tests via `run_upstream_tests_vanilla.sh`. **Not currently enabled in CI** (workflow step is commented out). The script remains for manual use; set `METAL_TARGET` (default `blackhole_no_models`) and ensure `metal-upstream-tag` is set in `golden.json`.
+Runs Metal upstream tests the same way as tt-system-firmware `metal.yml`: pull `upstream-tests-bh` / `upstream-tests-bh-p300` / `upstream-tests-bh-glx` from `metal-upstream-tag` (or `metal-version`), bind-mount host `/opt/tenstorrent/hf-models`, set `HF_MODEL` / `LLAMA_DIR` per board, apply the whisper/determinism/(p300|loudbox) patches, then run `run_upstream_tests_vanilla.sh <metal-target>`. Board profile comes from `GOLDEN_RUNNER_LABEL` (`p100a`/`p150a` → `blackhole`, `p300a` → `blackhole_p300`, etc.).
 
 ## Test workload
 
@@ -141,8 +141,8 @@ Runs `upstream-tests-bh` container tests via `run_upstream_tests_vanilla.sh`. **
 `complete_installer_test.sh` mirrors CI and prints a pass/fail summary:
 
 ```bash
-# Hardware (root): golden-install.sh --hw → verify-versions.sh → smi-reset.sh → ttnn-unit-test.sh
-sudo ./complete_installer_test.sh
+# Hardware (root): … → ttnn-unit-test.sh → metal-upstream.sh
+sudo ./complete_installer_test.sh --runner-label p150a
 
 # No device: golden-install.sh → verify-versions.sh
 ./complete_installer_test.sh --no-hw
@@ -161,7 +161,7 @@ sudo ./complete_installer_test.sh --force-flash
 
 - **Hugepages:** HW install uses `--install-hugepages`. If ttnn test fails with missing `/dev/hugepages-1G`, re-run install or reboot once after first setup (CI uses `--reboot-option never`).
 - **Self-hosted runners** may log `sudo: unable to resolve host ubuntu` when the hostname is missing from `/etc/hosts`. Harmless. To silence: `echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts`
-- **Upstream image tags** on `upstream-tests-bh` are CI dev tags (e.g. `v0.71.0-dev20260516-…`), not the same as release `metal-version` tags on the metalium image.
+- **Upstream image tags:** optional `metal-upstream-tag` overrides the image tag; otherwise HW CI uses `metal-version` (e.g. `v0.72.0` publishes matching `upstream-tests-bh*` tags).
 
 ## Contributing
 

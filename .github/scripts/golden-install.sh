@@ -77,6 +77,8 @@ fi
 
 readonly GOLDEN_METALIUM_RELEASE_REPO="ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64"
 readonly GOLDEN_METAL_UPSTREAM_REPO="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh"
+readonly GOLDEN_METAL_UPSTREAM_REPO_P300="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-p300"
+readonly GOLDEN_METAL_UPSTREAM_REPO_GLX="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-glx"
 
 normalize_metal_image_tag() {
   local tag="${1:?}"
@@ -91,8 +93,24 @@ read_golden_metal_version() {
   jq -r '.["metal-version"] // .["metalium-image-tag"] // empty' "${GOLDEN_JSON}"
 }
 
+# Prefer metal-upstream-tag; else metal-version (matching upstream tags exist for v0.72.0+).
 read_golden_metal_upstream_tag() {
-  jq -r '.["metal-upstream-tag"] // empty' "${GOLDEN_JSON}"
+  local tag
+  tag="$(jq -r '.["metal-upstream-tag"] // empty' "${GOLDEN_JSON}")"
+  if [[ -z "${tag}" ]]; then
+    tag="$(read_golden_metal_version)"
+  fi
+  printf '%s\n' "${tag}"
+}
+
+# Board → upstream image repo (same mapping as metal-upstream.sh / metal.yml).
+resolve_metal_upstream_repo() {
+  local label="${GOLDEN_RUNNER_LABEL:-${GITHUB_RUNNER_NAME:-}}"
+  case "${label}" in
+    p300a* | */p300a | *-p300a*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_P300}" ;;
+    bh-galaxy* | *-bh-galaxy* | *galaxy*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_GLX}" ;;
+    *) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO}" ;;
+  esac
 }
 
 metalium_release_image_ref() {
@@ -100,7 +118,9 @@ metalium_release_image_ref() {
 }
 
 metal_upstream_image_ref() {
-  printf '%s:%s\n' "${GOLDEN_METAL_UPSTREAM_REPO}" "$(normalize_metal_image_tag "$1")"
+  local tag="${1:?}"
+  local repo="${2:-$(resolve_metal_upstream_repo)}"
+  printf '%s:%s\n' "${repo}" "$(normalize_metal_image_tag "${tag}")"
 }
 
 INSTALLER_VER="$(jq -r '.installer' "${GOLDEN_JSON}")"
@@ -207,7 +227,7 @@ if [[ "${HW}" -eq 1 ]]; then
   if [[ -n "${METAL_UPSTREAM_TAG}" ]]; then
     echo "  upstream:  $(metal_upstream_image_ref "${METAL_UPSTREAM_TAG}") (golden CI only)"
   else
-    echo "  upstream:  (skipped — metal-upstream-tag not set)"
+    echo "  upstream:  (skipped — no metal-upstream-tag / metal-version)"
   fi
 
   INSTALL_TIMEOUT=1800
@@ -324,7 +344,7 @@ if [[ "${HW}" -eq 1 ]]; then
 
   if [[ -n "${METAL_UPSTREAM_TAG}" ]]; then
     METAL_UPSTREAM_IMAGE="$(metal_upstream_image_ref "${METAL_UPSTREAM_TAG}")"
-    echo "Pulling upstream-tests-bh (golden metal upstream step; not part of tt-installer)..."
+    echo "Pulling ${METAL_UPSTREAM_IMAGE} (golden metal upstream step; not part of tt-installer)..."
     if ${CONTAINER_RUNTIME} pull "${METAL_UPSTREAM_IMAGE}"; then
       echo "${METAL_UPSTREAM_IMAGE}" > /tmp/tenstorrent-metal-upstream-image.path
     else
@@ -332,7 +352,7 @@ if [[ "${HW}" -eq 1 ]]; then
       echo "${METAL_UPSTREAM_IMAGE}" > /tmp/tenstorrent-metal-upstream-image.path
     fi
   else
-    echo "Skipping upstream-tests-bh pull (metal-upstream-tag not set in golden.json)."
+    echo "Skipping upstream-tests pull (no metal-upstream-tag / metal-version in golden.json)."
     rm -f /tmp/tenstorrent-metal-upstream-image.path
   fi
 fi
