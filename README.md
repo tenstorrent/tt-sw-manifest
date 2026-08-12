@@ -33,7 +33,7 @@ Four workflows under `.github/workflows/`:
 |----------|--------------|--------------|
 | **Golden — ttis** (`golden-ttis.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch | Install the `golden.json` stack in each distro container, export a per-distro `.ttis`, and verify it |
 | **Golden — hardware** (`golden-hw.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch; called by release workflow | Full HW suite on self-hosted p100a / p150a / p300a runners |
-| **Golden — release** (`golden-release.yml`) | Manual dispatch from `main` only | Re-run no-hw + HW validation, then publish a semver GitHub Release (`v1.0.0`, …) |
+| **Golden — release** (`golden-release.yml`) | Manual dispatch from `main` only | Re-run no-hw + HW validation, then publish a date-tagged GitHub Release (`vYYYY.MM.DD`) |
 | **Renovate** (`renovate.yml`) | Daily schedule + manual dispatch | Bump pins in `golden.json` via Renovate |
 
 Pushes to `main` / `renovate/**` and PRs touching golden files run **both** golden-ttis and golden-hw.
@@ -66,7 +66,7 @@ golden-install.sh --export  →  ttis.sh validate  →  verify-versions.sh  → 
 
 **Fedora / Python.** Fedora 43 ships Python 3.14, which `tt-umd` (a `tt-smi` dependency) has no distribution for. The Fedora `.ttis` pins `python_env.python_version: 3.12`; on import tt-installer creates the venv with `uv venv --python 3.12` (installing `uv` first if absent). The Fedora test container also installs `libatomic` — a runtime dependency of `tt-smi`'s `tt_umd` extension that the minimal image lacks (Ubuntu/Debian already ship it).
 
-Dispatch **Golden — release** from `main` after no-hw and HW validation pass. At dispatch, pick a **semver bump** (`major` / `minor` / `patch`) from the dropdown. The workflow re-runs both suites, then publishes `golden.json` (with `test-sha` set to the dispatch commit) and the four per-distro `.ttis` files as a **semver GitHub Release** (`v1.0.0`, …). Legacy date tags (`v2026.06.26`) are ignored when computing the next version — for the first semver cut, choose **major** to get `v1.0.0`. Routine CI (push/PR) does **not** publish a release.
+Dispatch **Golden — release** from `main` after no-hw and HW validation pass. The workflow re-runs both suites, then publishes `golden.json` (with `test-sha` set to the dispatch commit) and the four per-distro `.ttis` files as a **date-tagged GitHub Release** (`v2026.08.12`, with a `-N` suffix for same-day re-releases). Routine CI (push/PR) does **not** publish a release.
 
 ### Hardware step order
 
