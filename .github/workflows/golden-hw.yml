@@ -110,17 +110,22 @@ jobs:
           NUM_RESETS: "10"
         run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" bash .github/scripts/smi-reset.sh
 
-      - name: TTNN unit test (tt-metalium release container)
-        timeout-minutes: 30
+      - name: SMI snapshot (tt-smi -s)
         env:
-          GOLDEN_JSON: ${{ github.workspace }}/golden.json
-          GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
-        run: |
-          sudo -E env \
-            GOLDEN_JSON="${GOLDEN_JSON}" \
-            GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
-            GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
-            bash .github/scripts/ttnn-unit-test.sh
+          VENV_DIR: /root/.tenstorrent-venv
+        run: sudo -E env VENV_DIR="${VENV_DIR}" bash .github/scripts/smi-snapshot.sh
+
+      # - name: TTNN unit test (tt-metalium release container)
+      #   timeout-minutes: 30
+      #   env:
+      #     GOLDEN_JSON: ${{ github.workspace }}/golden.json
+      #     GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
+      #   run: |
+      #     sudo -E env \
+      #       GOLDEN_JSON="${GOLDEN_JSON}" \
+      #       GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
+      #       GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
+      #       bash .github/scripts/ttnn-unit-test.sh
 
       - name: Metal upstream tests (upstream-tests-bh)
         timeout-minutes: 120

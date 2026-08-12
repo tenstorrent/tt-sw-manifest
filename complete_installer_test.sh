@@ -36,7 +36,7 @@ Usage: $(basename "$0") [OPTIONS]
 Run .github/scripts in the same order as CI and print a pass/fail summary.
 
 Scripts (no-hw):  golden-install.sh → verify-versions.sh
-Scripts (hw):     golden-install.sh --hw → verify-versions.sh → smi-reset.sh → ttnn-unit-test.sh → metal-upstream.sh
+Scripts (hw):     golden-install.sh --hw → verify-versions.sh → smi-reset.sh → smi-snapshot.sh → ttnn-unit-test.sh → metal-upstream.sh
 
 Options:
   --hw              Force hardware flow (requires root; needs /dev/tenstorrent for full pass).
@@ -240,6 +240,10 @@ if [[ "${MODE}" == hw ]]; then
   # --- smi-reset.sh ---
   run_script "smi-reset.sh" \
     env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS:-10}" bash "${SCRIPTS_DIR}/smi-reset.sh" || true
+
+  # --- smi-snapshot.sh ---
+  run_script "smi-snapshot.sh" \
+    env VENV_DIR="${VENV_DIR}" bash "${SCRIPTS_DIR}/smi-snapshot.sh" || true
 
   # --- ttnn-unit-test.sh ---
   run_script "ttnn-unit-test.sh" \
