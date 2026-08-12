@@ -132,9 +132,19 @@ jobs:
         env:
           GOLDEN_JSON: ${{ github.workspace }}/golden.json
           GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
+          METAL_UPSTREAM_LOG: ${{ github.workspace }}/metal-upstream-${{ matrix.runner }}.log
         run: |
           sudo -E env \
             GOLDEN_JSON="${GOLDEN_JSON}" \
             GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
             GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
+            METAL_UPSTREAM_LOG="${METAL_UPSTREAM_LOG}" \
             bash .github/scripts/metal-upstream.sh
+
+      - name: Upload metal upstream log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: metal-upstream-${{ matrix.runner }}-output
+          path: ${{ github.workspace }}/metal-upstream-${{ matrix.runner }}.log
+          if-no-files-found: warn

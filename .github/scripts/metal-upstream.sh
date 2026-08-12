@@ -302,10 +302,18 @@ if ! ${CONTAINER_CMD} pull "${METAL_IMAGE}"; then
   exit 1
 fi
 
-LOG_FILE="$(mktemp)"
+LOG_FILE="${METAL_UPSTREAM_LOG:-}"
+if [[ -z "${LOG_FILE}" ]]; then
+  if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
+    LOG_FILE="${GITHUB_WORKSPACE}/metal-upstream-${BOARD:-unknown}.log"
+  else
+    LOG_FILE="/tmp/metal-upstream-output.log"
+  fi
+fi
 ENTRYPOINT_HOST="$(mktemp)"
 cleanup() {
-  rm -f "${LOG_FILE}" "${ENTRYPOINT_HOST}"
+  # Keep LOG_FILE for the workflow upload-artifact step (metal.yml pattern).
+  rm -f "${ENTRYPOINT_HOST}"
 }
 
 write_container_entrypoint "${ENTRYPOINT_HOST}"
@@ -355,11 +363,18 @@ KEEPALIVE_PID=$!
 
 trap 'cleanup; kill "${KEEPALIVE_PID}" 2>/dev/null || true; rm -f /tmp/golden-metal-network-keepalive' EXIT
 
-if ! run_in_container >"${LOG_FILE}" 2>&1; then
-  echo "FAIL: metal upstream tests failed" >&2
-  tail -n 200 "${LOG_FILE}" >&2 || true
+echo "Full upstream log: ${LOG_FILE}"
+# tee like metal.yml so the step stream and the artifact both get the full output.
+set +e
+run_in_container 2>&1 | tee "${LOG_FILE}"
+rc=${PIPESTATUS[0]}
+set -e
+# Workflow upload-artifact runs as the runner user, not root.
+chmod a+r "${LOG_FILE}" 2>/dev/null || true
+
+if [[ "${rc}" -ne 0 ]]; then
+  echo "FAIL: metal upstream tests failed (full log: ${LOG_FILE})" >&2
   exit 1
 fi
 
-tail -n 50 "${LOG_FILE}"
-echo "PASS: metal upstream (${METAL_TARGET})"
+echo "PASS: metal upstream (${METAL_TARGET}) (full log: ${LOG_FILE})"
