@@ -153,7 +153,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          name: Golden versions ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           body: ${{ steps.tag.outputs.body }}
           files: |
