@@ -1,180 +1,81 @@
 # tt-sw-manifest
 
-Pinned Tenstorrent stack versions (`golden.json`) and CI that validates them the way a customer would install: run [tt-installer](https://github.com/tenstorrent/tt-installer) once, then exercise that same stack on hardware without re-flashing firmware or swapping KMD between steps.
+**Golden stack** for Tenstorrent software. [`golden.json`](golden.json) pins a set of component versions; CI installs that combo using [tt-installer](https://github.com/tenstorrent/tt-installer) and runs the full validation suite on relevant PRs and on every push to `main` / `renovate/**`.
 
-## Important Notice
+[Renovate](renovate.json) watches upstream GitHub releases and opens PRs to bump the pins automatically.
 
-**This is a staging and testing repository only.** It is used internally by Tenstorrent for validating golden versions of the Tenstorrent software stack. This repository is provided as-is for reference purposes. If you're a user looking to tweak your stack, please do so manually using [tt-installer arguments](https://github.com/tenstorrent/tt-installer/wiki/Customizing-your-installation#advanced-examples) or by installing relevant components from source.
+This repo does not install software for you. Use the pins in [`golden.json`](golden.json) to install each component yourself, or install via [tt-installer](https://github.com/tenstorrent/tt-installer). What this repo publishes is a **validated** pin set (plus `.ttis` install schemas) that CI has exercised together.
 
-**Please do not open issues or pull requests in this repository.** They will be closed without review. For issues with specific Tenstorrent software components, please refer to the appropriate component repositories. For issues with the installation process, refer to [tt-installer](https://github.com/tenstorrent/tt-installer).
+## [`golden.json`](golden.json)
 
-## `golden.json`
+These are the system-software and compiler pieces we pin and test together as one stack. Live values are always in [`golden.json`](golden.json) (they change as Renovate merges):
 
-| Field | Passed to tt-installer / used by |
-|-------|----------------------------------|
-| `installer` | tt-installer release tag for `install.sh` + `ttis.sh` (overridable via `INSTALLER_REPO` / `INSTALLER_TAG`) |
-| `kmd` | `--kmd-version` → `tenstorrent-dkms` |
-| `smi` | `--smi-version` → `tt-smi` in installer venv |
-| `flash` | `--flash-version` → `tt-flash` in installer venv |
-| `sfpi` | `--sfpi-version` → `sfpi` (from [tenstorrent/sfpi](https://github.com/tenstorrent/sfpi)) |
-| `hugepages` | `--systools-version` → `tenstorrent-tools` (from [tenstorrent/tt-system-tools](https://github.com/tenstorrent/tt-system-tools), installed with hugepages) |
-| `firmware` | `--fw-version`; never flashed in CI, but recorded in the exported `.ttis` as assumed-flashed |
-| `metal-version` | `--metalium-image-tag` → `tt-metalium-ubuntu-22.04-release-amd64` (HW install + ttnn unit test) |
-| `metal-upstream-tag` | Optional pin for `upstream-tests-bh*`; if unset, HW CI falls back to `metal-version` |
-| `test-sha` | **Release artifact only** — commit on `main` that golden-ttis and golden-hw passed when the release was cut (not present in the repo copy of `golden.json`) |
+| Field | Upstream |
+|-------|----------|
+| `kmd` | [tt-kmd](https://github.com/tenstorrent/tt-kmd) → `tenstorrent-dkms` |
+| `smi` | [tt-smi](https://github.com/tenstorrent/tt-smi) |
+| `flash` | [tt-flash](https://github.com/tenstorrent/tt-flash) |
+| `sfpi` | [sfpi](https://github.com/tenstorrent/sfpi) (compiler toolchain) |
+| `hugepages` | [tt-system-tools](https://github.com/tenstorrent/tt-system-tools) → `tenstorrent-tools` |
+| `firmware` | [tt-system-firmware](https://github.com/tenstorrent/tt-system-firmware) |
+| `metal-version` | [tt-metal](https://github.com/tenstorrent/tt-metal) (Metalium / default `upstream-tests-bh*` tag) |
+| `installer` | [tt-installer](https://github.com/tenstorrent/tt-installer) (release CI uses to install) |
 
-[Renovate](renovate.json) opens grouped PRs when these pins change.
+On release, the published `golden.json` also gets a `test-sha` field (not kept in the repo copy): the commit on `main` that passed validation before the release was cut.
 
-## CI workflows
+## Renovate
 
-Four workflows under `.github/workflows/`:
+Without automation, keeping pins current means watching every component’s GitHub Releases and hand-editing [`golden.json`](golden.json). Renovate does that tracking for you.
 
-| Workflow | When it runs | What it does |
-|----------|--------------|--------------|
-| **Golden — ttis** (`golden-ttis.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch | Install the `golden.json` stack in each distro container, export a per-distro `.ttis`, and verify it |
-| **Golden — hardware** (`golden-hw.yml`) | Push to `main` / `renovate/**`; PRs touching golden files; manual dispatch; called by release workflow | Full HW suite on self-hosted p100a / p150a / p300a runners |
-| **Golden — release** (`golden-release.yml`) | Manual dispatch from `main` only | Re-run no-hw + HW validation, then publish a date-tagged GitHub Release (`vYYYY.MM.DD`) |
-| **Renovate** (`renovate.yml`) | Daily schedule + manual dispatch | Bump pins in `golden.json` via Renovate |
+The **Renovate** workflow runs daily (and on demand). Configured by [`renovate.json`](renovate.json), it polls upstream releases, then opens or updates a grouped PR (typically `renovate/golden-versions`) with the bump(s). That PR runs the same full CI as any other change — merge only when checks are green (`automerge` is off). Day-to-day work is “review a green Renovate PR,” not “chase every component release.”
 
-Pushes to `main` / `renovate/**` and PRs touching golden files run **both** golden-ttis and golden-hw.
+Manual run: Actions → **Renovate** → Run workflow (optional dry-run logs without opening PRs).
 
-### Golden — ttis (install / export / test)
+## CI tests
 
-A matrix of four distros — `ubuntu:22.04`, `ubuntu:24.04`, `debian:13`, `fedora:43` — each in a fresh container as a non-root user:
+The same suite runs on every relevant PR, on Renovate bump PRs, on pushes to `main` / `renovate/**`, and again when **Golden — release** is dispatched. (Post-merge pushes may skip if the same content already passed on the PR.)
 
-```
-golden-install.sh --export  →  ttis.sh validate  →  verify-versions.sh  →  import round-trip
-```
+1. **Distro install + `.ttis` export** — On GitHub-hosted `ubuntu-latest`, spin up Docker images for **Ubuntu 22.04**, **Ubuntu 24.04**, **Debian 13**, and **Fedora 43**. Install the [`golden.json`](golden.json) pins with tt-installer, export a per-distro `.ttis`, validate it, and round-trip import. These `.ttis` files become release artifacts.
 
-`tt-installer` installs the full host software stack at `golden.json` pins, then `--export-schema` captures the **actually-installed** versions into a per-distro **`.ttis`** file (tt-installer's state-file format). That exported file — not a hand-built one — is what gets released, so the recorded versions are the ones the install really produced:
+2. **Hardware install** — On the HW runners, install the stack with tt-installer (`--hw --force-flash`) so KMD, tools, firmware, and Metal images match the pins.
 
-| `.ttis` field | Value |
-|---|---|
-| `tt_system.tenstorrent-dkms` | installed `tenstorrent-dkms` (matched against `kmd`) |
-| `tt_system.tenstorrent-tools` | installed `tenstorrent-tools` (matched against `tools`) |
-| `tt_system.sfpi` | installed `sfpi` (matched against `sfpi`) |
-| `tt_python.tt-smi` / `tt-flash` | installed `tt-smi` / `tt-flash` (matched against `smi` / `flash`) |
-| `firmware.version` | `firmware` from `golden.json`, **recorded as assumed-flashed** — CI never flashes (no device), but the value is written so importing on real hardware flashes to the pin¹ |
-| `container_runtime.runtime` | `none` |
-| `python_env` | `method: venv`; `location` blanked for portability; `python_version: 3.12` on Fedora (see below), else empty |
+3. **Version verify** — On the HW runners, confirm installed packages/CLIs match [`golden.json`](golden.json) (`verify-versions.sh`).
 
-¹ Firmware can't be flashed in the no-hardware matrix, so the export naturally records it empty; `golden-install.sh --export` then injects the `golden.json` value back in. Until a real CI fleet flashes and exports for real, the golden trusts the pin.
+4. **PCI reset stress** — On the HW runners, run `tt-smi -r` ten times (`smi-reset.sh`).
 
-`metal-version` / `metal-upstream-tag` have no place in the `.ttis` schema and stay HW-only concerns.
+5. **SMI snapshot** — On the HW runners, run `tt-smi -s` and print board state into the job log (`smi-snapshot.sh`).
 
-**Installer release source.** `install.sh` and `ttis.sh` are fetched from a tt-installer **release**, selected by `INSTALLER_REPO` (default `tenstorrent/tt-installer`) and `INSTALLER_TAG` (default `v<golden.json installer>`). The `--export-schema` install path produces the released file; the import round-trip then confirms that file is consumable via `ttis.sh` / `--import-schema`.
+6. **Metal upstream** — On the HW runners, run the syseng-style upstream suite (`metal-upstream.sh` / `upstream-tests-bh*`, host weights under `/opt/tenstorrent/hf-models`). Full logs are uploaded as `metal-upstream-<board>-output` artifacts.
 
-**Fedora / Python.** Fedora 43 ships Python 3.14, which `tt-umd` (a `tt-smi` dependency) has no distribution for. The Fedora `.ttis` pins `python_env.python_version: 3.12`; on import tt-installer creates the venv with `uv venv --python 3.12` (installing `uv` first if absent). The Fedora test container also installs `libatomic` — a runtime dependency of `tt-smi`'s `tt_umd` extension that the minimal image lacks (Ubuntu/Debian already ship it).
+| Machines | Role |
+|----------|------|
+| `ubuntu-latest` (GitHub-hosted) | Distro container matrix (item 1) |
+| HW runners (self-hosted & shared with system FW) | Hardware suite (items 2–6) |
 
-Dispatch **Golden — release** from `main` after no-hw and HW validation pass. The workflow re-runs both suites, then publishes `golden.json` (with `test-sha` set to the dispatch commit) and the four per-distro `.ttis` files as a **date-tagged GitHub Release** (`v2026.08.12`, with a `-N` suffix for same-day re-releases). Routine CI (push/PR) does **not** publish a release.
+## Release
 
-### Hardware step order
+Dispatch **Golden — release** from `main` when you want a published golden. The workflow re-runs the full CI suite above, then publishes a tagged GitHub Release (`vYYYY.MM.DD`). Routine push/PR CI does **not** publish a release.
 
-On self-hosted `p100a`, `p150a`, and `p300a` runners:
+### Release contents
 
-```
-golden-install.sh --hw --force-flash  →  verify-versions.sh  →  smi-reset.sh  →  ttnn-unit-test.sh  →  metal-upstream.sh
-```
+Each release attaches:
 
-`metal-upstream.sh` mirrors syseng `metal.yml`: mounts `/opt/tenstorrent/hf-models`, sets board `METAL_TARGET` / `HF_MODEL`, and runs `run_upstream_tests_vanilla.sh` in the matching `upstream-tests-bh*` image.
+| File | Contents |
+|------|----------|
+| `golden.json` | Repo pins **plus** `test-sha` (validation commit) |
+| `ubuntu-22.04.ttis` | tt-installer schema from a real install on Ubuntu 22.04 |
+| `ubuntu-24.04.ttis` | Same for Ubuntu 24.04 |
+| `debian-13.ttis` | Same for Debian 13 |
+| `fedora-43.ttis` | Same for Fedora 43 |
 
-## Scripts
-
-All test scripts live in `.github/scripts/`.
-
-### `build-and-test-ttis.sh`
-
-No-hardware orchestrator (run as a non-root user inside a distro): `golden-install.sh --export` → `ttis.sh validate` → `verify-versions.sh` → import round-trip. The exported `golden/<distro>.ttis` is the release artifact.
-
-### `ci-container-bootstrap.sh`
-
-Bootstraps a fresh distro container (installs prereqs, creates an unprivileged user), runs `build-and-test-ttis.sh`, and copies the exported `.ttis` to `dist/` for upload. Called by `golden-ttis.yml`. On Fedora it also installs `libatomic` (a `tt_umd` runtime dependency the minimal image omits).
-
-### `golden-install.sh`
-
-Downloads tt-installer `install.sh` (and, for `--ttis` / `--export`, `ttis.sh`) from a release and runs the installer non-interactively. The release defaults to `tenstorrent/tt-installer` at `golden.json`'s `installer` pin; override with `INSTALLER_REPO` / `INSTALLER_TAG` (or set `INSTALLER_URL` / `TTIS_URL` directly).
-
-```bash
-golden-install.sh [--hw] [--force-flash]
-golden-install.sh --ttis <file>
-golden-install.sh --export <file>
-```
-
-| Flag | Effect |
-|------|--------|
-| *(none)* | No-hw: KMD + venv (`tt-smi`, `tt-flash`) from `golden.json` flags. No hugepages/sfpi, no metalium, no container runtime. |
-| `--hw` | HW: adds hugepages, metalium release container, Docker/Podman, and pre-pulls the board’s `upstream-tests-bh*` image (`metal-upstream-tag` or `metal-version`). Requires root. |
-| `--force-flash` | Enable firmware flash during install (default: off). |
-| `--ttis <file>` | No-hw install driven by a compiled `.ttis` via `--import-schema` (version pins, Python version, etc. come from the file, not flags). Fetches both `install.sh` and `ttis.sh` from the release. Honors `INSTALL_EXTRA_ARGS` for extra installer flags. Mutually exclusive with `--hw`. |
-| `--export <file>` | No-hw install of the **full** host stack (KMD + `tenstorrent-tools`/hugepages + `sfpi` + venv) at `golden.json` pins, then `--export-schema` writes the installed versions to `<file>`. Afterward, firmware is recorded from `golden.json` (assumed-flashed; never actually flashed) and `python_env.location` is blanked for portability. Mutually exclusive with `--hw` / `--ttis`. |
-
-Records the installer venv path to `/tmp/tenstorrent-installer-venv.path`.
-
-### `verify-versions.sh`
-
-Activates the installer Python venv (`~/.tenstorrent-venv`, or `VENV_DIR` / path file) and checks:
-
-- `installer`, `kmd` (via `dpkg-query` / `rpm` on `tenstorrent-dkms`), `smi`, `flash` match `golden.json`
-- `sfpi` and `tools` (`tenstorrent-tools`) match `golden.json` **when installed** — checked on the no-hw export run; reported as `SKIP` on paths that don't install them (e.g. HW)
-- `tt-smi -v`, `tt-flash -v`, `tt-smi -h`, `tt-flash -h` smoke tests pass
-
-Set `SKIP_INSTALLER_VERSION_CHECK=1` to report (not fail) the installer row when installing from a release whose version differs from the `installer` pin. The script prints each CLI's raw output and exit code, so a failing `tt-smi`/`tt-flash` shows its traceback and a clear `FAIL` row instead of aborting silently.
-
-### `smi-reset.sh`
-
-Runs `tt-smi -r` (PCI reset all devices) **10 times** using the installer venv. Configurable via `NUM_RESETS`.
-
-### `ttnn-unit-test.sh`
-
-Pulls `ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:<metal-version>` and runs `tests/metalium-workload.py` in a privileged container with `/dev/tenstorrent` and hugepages mounted from the host. Does not re-install KMD or flash firmware.
-
-### `metal-upstream.sh`
-
-Runs Metal upstream tests the same way as tt-system-firmware `metal.yml`: pull `upstream-tests-bh` / `upstream-tests-bh-p300` / `upstream-tests-bh-glx` from `metal-upstream-tag` (or `metal-version`), bind-mount host `/opt/tenstorrent/hf-models`, set `HF_MODEL` / `LLAMA_DIR` per board, apply the whisper/determinism/(p300|loudbox) patches, then run `run_upstream_tests_vanilla.sh <metal-target>`. Board profile comes from `GOLDEN_RUNNER_LABEL` (`p100a`/`p150a` → `blackhole`, `p300a` → `blackhole_p300`, etc.).
-
-## Test workload
-
-`tests/metalium-workload.py` — opens device 0 with **ttnn**, runs a small bfloat16 tensor add, closes the device. Mounted read-only into the metalium container at `/metalium-workload.py`.
-
-## Local run
-
-`complete_installer_test.sh` mirrors CI and prints a pass/fail summary:
-
-```bash
-# Hardware (root): … → ttnn-unit-test.sh → metal-upstream.sh
-sudo ./complete_installer_test.sh --runner-label p150a
-
-# No device: golden-install.sh → verify-versions.sh
-./complete_installer_test.sh --no-hw
-
-# Re-run tests after a previous install
-sudo ./complete_installer_test.sh --skip-install
-
-# Install only
-sudo ./complete_installer_test.sh --install-only
-
-# Force firmware flash during install
-sudo ./complete_installer_test.sh --force-flash
-```
-
-## Notes
-
-- **Hugepages:** HW install uses `--install-hugepages`. If ttnn test fails with missing `/dev/hugepages-1G`, re-run install or reboot once after first setup (CI uses `--reboot-option never`).
-- **Self-hosted runners** may log `sudo: unable to resolve host ubuntu` when the hostname is missing from `/etc/hosts`. Harmless. To silence: `echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts`
-- **Upstream image tags:** optional `metal-upstream-tag` overrides the image tag; otherwise HW CI uses `metal-version` (e.g. `v0.72.0` publishes matching `upstream-tests-bh*` tags).
+The `.ttis` files are **exported from CI installs**, not hand-written. Consumers use these with tt-installer (`--import-schema` / `ttis.sh`); see [tt-installer](https://github.com/tenstorrent/tt-installer).
 
 ## Contributing
 
-This is a staging and testing repository only. Please do not open issues or submit pull requests. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
-For issues with Tenstorrent software components, please refer to the appropriate component repositories.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Prefer component repos or tt-installer for product issues — this repo is not the place for them.
 
 ## License
 
-This project is licensed under the Apache License, Version 2.0, except where specified. See the following files for complete licensing information:
-
-- [LICENSE](LICENSE) — Overall license for this project
-- [LICENSE_understanding.txt](LICENSE_understanding.txt) — Additional clarifications about the Apache 2.0 license application
-- [NOTICE](NOTICE) — Copyright and attribution notices
+Apache License 2.0 unless noted otherwise: [LICENSE](LICENSE), [LICENSE_understanding.txt](LICENSE_understanding.txt), [NOTICE](NOTICE).
 
 Copyright (c) 2025-2026 Tenstorrent USA, Inc.
