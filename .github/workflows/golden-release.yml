@@ -2,13 +2,23 @@
 # golden.json (with test-sha) and per-distro .ttis files as a GitHub Release.
 #
 # Dispatch from main after golden.json changes have merged and routine CI is green.
-# Tags are date-based: vYYYY.MM.DD (with -N for same-day re-releases).
+# Choose major / minor / patch at dispatch time; tags are semver (v1.0.0, …).
+# Legacy date tags (v2026.06.26) are ignored when computing the next version.
 name: Golden — release
-run-name: Golden release · ${{ github.event_name }}
+run-name: Golden release · ${{ inputs.bump }} · ${{ github.event_name }}
 
 on:
   workflow_dispatch:
     inputs:
+      bump:
+        description: Semver bump (first cut → pick major for v1.0.0)
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
       reason:
         description: Why you are cutting a release (optional)
         required: false
@@ -18,8 +28,9 @@ concurrency:
   group: golden-release-${{ github.ref }}
   cancel-in-progress: true
 
-# Reusable children declare actions: write (skip-duplicate). Callers must grant it
-# or GitHub rejects the call ("requesting actions: write, but … actions: none").
+# Top-level defaults. Reusable child workflows declare actions: write (skip-duplicate);
+# callers must grant at least that, or GitHub rejects the call with
+# "requesting actions: write, but is only allowed actions: none".
 permissions:
   contents: read
   actions: write
@@ -50,6 +61,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download exported .ttis files
         uses: actions/download-artifact@v4
@@ -70,35 +83,77 @@ jobs:
           ls -1 release
           jq . release/golden.json
 
-      - name: Derive release tag
+      - name: Derive semver release tag
         id: tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUMP: ${{ inputs.bump }}
           REASON: ${{ inputs.reason }}
         run: |
           set -euo pipefail
-          BASE="v$(date -u +%Y.%m.%d)"
-          SUFFIX=0
-          TAG="${BASE}"
-          while gh release view "${TAG}" >/dev/null 2>&1; do
-            SUFFIX=$((SUFFIX + 1))
-            TAG="${BASE}-${SUFFIX}"
-          done
+          # Prefer git tags; ignore legacy date tags (vYYYY.MM.DD).
+          git fetch --tags --force >/dev/null 2>&1 || true
+          LATEST="$(
+            git tag -l 'v*.*.*' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | grep -vE '^v20[0-9]{2}\.' \
+              | sort -V \
+              | tail -1 \
+              || true
+          )"
+          if [[ -z "${LATEST}" ]]; then
+            MAJOR=0
+            MINOR=0
+            PATCH=0
+            echo "No prior semver tag; starting from v0.0.0 (bump=${BUMP})"
+          else
+            echo "Latest semver tag: ${LATEST}"
+            VER="${LATEST#v}"
+            IFS=. read -r MAJOR MINOR PATCH <<<"${VER}"
+          fi
+
+          case "${BUMP}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+            *)
+              echo "Unknown bump: ${BUMP}" >&2
+              exit 1
+              ;;
+          esac
+
+          TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "ERROR: release ${TAG} already exists" >&2
+            exit 1
+          fi
           {
             echo "tag=${TAG}"
+            echo "bump=${BUMP}"
             echo "body<<EOF"
+            echo "Semver bump: **${BUMP}** → \`${TAG}\`"
             if [[ -n "${REASON}" ]]; then
+              echo
               echo "${REASON}"
             fi
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
-          echo "Release tag: ${TAG}"
+          echo "Release tag: ${TAG} (bump=${BUMP})"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          name: ${{ steps.tag.outputs.tag }}
+          name: Golden versions ${{ steps.tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           body: ${{ steps.tag.outputs.body }}
           files: |
