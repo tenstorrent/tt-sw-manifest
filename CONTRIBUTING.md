@@ -1,25 +1,18 @@
-# Contributing to ttis-golden-versions
+# Contributing to tt-sw-manifest
 
-## Important Notice
+## Staging repository
 
 **This is a staging and testing repository only.**
 
-This repository is used internally by Tenstorrent for staging, testing, and validating golden versions of the Tenstorrent software stack. It is not intended for external contributions.
+It is used internally by Tenstorrent to pin, validate, and release golden versions of the Tenstorrent software stack (see the [README](README.md)). It is not a product issue tracker.
 
-**Please do not:**
-- Open issues in this repository
-- Submit pull requests
-- Request changes or new features
+**Please do not** open external issues, drive-by pull requests, or feature requests here — they will be closed without review. Internal pin bumps come through Renovate and the Golden CI workflows described in the README.
 
-Any issues, pull requests, or feature requests opened in this repository will be closed without review.
+## Where to file issues
 
-## For Issues or Contributions
-
-If you have identified issues with the Tenstorrent software stack or wish to contribute improvements:
-
-- For issues with specific components (KMD, tt-smi, tt-flash, tt-metalium, etc.), please open issues in the respective component repositories
-- For issues with tt-installer, visit [tenstorrent/tt-installer](https://github.com/tenstorrent/tt-installer)
-- For general Tenstorrent software questions, refer to the appropriate project documentation
+- Specific components (KMD, tt-smi, tt-flash, tt-metal, firmware, etc.): the corresponding component repository
+- Installation / tt-installer: [tenstorrent/tt-installer](https://github.com/tenstorrent/tt-installer)
+- General product questions: that component’s docs or support channels
 
 ## Code of Conduct
 
