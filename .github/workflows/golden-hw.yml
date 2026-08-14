@@ -103,7 +103,9 @@ jobs:
         env:
           GOLDEN_JSON: ${{ github.workspace }}/golden.json
           VENV_DIR: /root/.tenstorrent-venv
-        run: sudo -E env GOLDEN_JSON="${GOLDEN_JSON}" VENV_DIR="${VENV_DIR}" bash .github/scripts/verify-versions.sh
+          # HW install uses --no-install-sfpi; skip so stale host sfpi (e.g. QuietBox) does not fail.
+          SKIP_SFPI_VERSION_CHECK: "1"
+        run: sudo -E env GOLDEN_JSON="${GOLDEN_JSON}" VENV_DIR="${VENV_DIR}" SKIP_SFPI_VERSION_CHECK="${SKIP_SFPI_VERSION_CHECK}" bash .github/scripts/verify-versions.sh
 
       - name: PCI reset stress (10x, installer tt-smi)
         env:
