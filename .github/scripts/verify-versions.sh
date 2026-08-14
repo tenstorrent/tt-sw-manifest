@@ -262,7 +262,13 @@ fi
 check_row "kmd" "${EXPECTED_KMD}" "${ACTUAL_KMD}"
 check_row "smi" "${EXPECTED_SMI}" "${ACTUAL_SMI}"
 check_row "flash" "${EXPECTED_FLASH}" "${ACTUAL_FLASH}"
-check_optional_row "sfpi" "${EXPECTED_SFPI}" "${ACTUAL_SFPI}"
+if [[ "${SKIP_SFPI_VERSION_CHECK:-0}" == "1" ]]; then
+  # HW golden-install passes --no-install-sfpi; leftover host packages (e.g. QuietBox)
+  # must not fail the job the way "not installed" already SKIPs on other runners.
+  printf "| %-12s | %-14s | %-14s | %-4s |\n" "sfpi" "${EXPECTED_SFPI:-(not pinned)}" "${ACTUAL_SFPI:-(absent)}" "SKIP"
+else
+  check_optional_row "sfpi" "${EXPECTED_SFPI}" "${ACTUAL_SFPI}"
+fi
 check_optional_row "hugepages" "${EXPECTED_TOOLS}" "${ACTUAL_TOOLS}"
 echo ""
 
