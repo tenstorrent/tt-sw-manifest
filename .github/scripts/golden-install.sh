@@ -78,6 +78,7 @@ fi
 readonly GOLDEN_METALIUM_RELEASE_REPO="ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64"
 readonly GOLDEN_METAL_UPSTREAM_REPO="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh"
 readonly GOLDEN_METAL_UPSTREAM_REPO_P300="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-p300"
+readonly GOLDEN_METAL_UPSTREAM_REPO_QB_GE="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-qb-ge"
 readonly GOLDEN_METAL_UPSTREAM_REPO_GLX="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-glx"
 
 normalize_metal_image_tag() {
@@ -108,6 +109,7 @@ resolve_metal_upstream_repo() {
   local label="${GOLDEN_RUNNER_LABEL:-${GITHUB_RUNNER_NAME:-}}"
   case "${label}" in
     p300a* | */p300a | *-p300a*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_P300}" ;;
+    quietbox2* | *-quietbox2*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_QB_GE}" ;;
     bh-galaxy* | *-bh-galaxy* | *galaxy*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_GLX}" ;;
     *) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO}" ;;
   esac

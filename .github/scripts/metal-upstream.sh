@@ -37,6 +37,7 @@ resolve_llama_8b_path() {
 
 readonly UPSTREAM_REPO_BH="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh"
 readonly UPSTREAM_REPO_BH_P300="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-p300"
+readonly UPSTREAM_REPO_BH_QB_GE="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-qb-ge"
 readonly UPSTREAM_REPO_BH_GLX="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-glx"
 
 normalize_metal_image_tag() {
@@ -98,7 +99,7 @@ resolve_board_profile() {
       ;;
     quietbox2)
       : "${METAL_TARGET:=blackhole_qb_ge}"
-      : "${UPSTREAM_IMAGE_REPO:=${UPSTREAM_REPO_BH}}"
+      : "${UPSTREAM_IMAGE_REPO:=${UPSTREAM_REPO_BH_QB_GE}}"
       : "${PATCHES:=determinism,whisper_ci,loudbox_dp}"
       : "${HF_MODEL:=${HF_LLAMA_70B}}"
       : "${LLAMA_DIR:=${HF_LLAMA_70B}}"
