@@ -98,11 +98,12 @@ resolve_board_profile() {
       : "${TT_CACHE_PATH:=${_llama8}}"
       ;;
     quietbox2)
+      # Match metal.yml "Set model env": Llama-3.1-8B-Instruct for HF_MODEL + LLAMA_DIR.
       : "${METAL_TARGET:=blackhole_qb_ge}"
       : "${UPSTREAM_IMAGE_REPO:=${UPSTREAM_REPO_BH_QB_GE}}"
-      : "${PATCHES:=determinism,whisper_ci,loudbox_dp}"
-      : "${HF_MODEL:=${HF_LLAMA_70B}}"
-      : "${LLAMA_DIR:=${HF_LLAMA_70B}}"
+      : "${PATCHES:=determinism,whisper_ci}"
+      : "${HF_MODEL:=${HF_LLAMA_8B}}"
+      : "${LLAMA_DIR:=${HF_LLAMA_8B}}"
       ;;
     loudbox)
       : "${METAL_TARGET:=blackhole_loudbox}"
