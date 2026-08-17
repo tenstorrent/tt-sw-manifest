@@ -75,6 +75,7 @@ jobs:
           - p150a # syseng-gh-03
           - p300a # yyz-zephyr-01
           - quietbox2 # BH QuietBox (shared with system FW)
+          - bh-galaxy-revc # BH Galaxy (shared with system FW)
 
     steps:
       - name: Checkout golden versions repo
@@ -111,7 +112,9 @@ jobs:
         env:
           VENV_DIR: /root/.tenstorrent-venv
           NUM_RESETS: "10"
-        run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" bash .github/scripts/smi-reset.sh
+          # smi-reset.sh selects tt-smi -glx_reset for bh-galaxy* labels; else -r.
+          GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
+        run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" bash .github/scripts/smi-reset.sh
 
       - name: SMI snapshot (tt-smi -s)
         env:

@@ -113,11 +113,12 @@ resolve_board_profile() {
       : "${LLAMA_DIR:=${HF_LLAMA_70B}}"
       ;;
     bh-galaxy)
+      # Match metal.yml "Set model env": Llama-3.1-8B-Instruct for HF_MODEL + LLAMA_DIR.
       : "${METAL_TARGET:=blackhole_glx}"
       : "${UPSTREAM_IMAGE_REPO:=${UPSTREAM_REPO_BH_GLX}}"
       : "${PATCHES:=determinism,whisper_ci}"
-      : "${HF_MODEL:=${HF_LLAMA_70B}}"
-      : "${LLAMA_DIR:=${HF_LLAMA_70B}}"
+      : "${HF_MODEL:=${HF_LLAMA_8B}}"
+      : "${LLAMA_DIR:=${HF_LLAMA_8B}}"
       ;;
     *)
       if [[ -z "${METAL_TARGET}" ]]; then
