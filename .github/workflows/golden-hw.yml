@@ -75,6 +75,7 @@ jobs:
           - p150a # syseng-gh-03
           - p300a # yyz-zephyr-01
           - quietbox2 # BH QuietBox (shared with system FW)
+          - bh-galaxy-revc # BH Galaxy (shared with system FW)
 
     steps:
       - name: Checkout golden versions repo
