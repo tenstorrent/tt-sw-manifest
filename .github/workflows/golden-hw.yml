@@ -1,7 +1,7 @@
 # THROWAWAY TEST BRANCH — do not merge.
 # Overlay unreleased tt-smi (tenstorrent/tt-smi#255, sbansal/new_glx_reset) and run
 # -glx_reset stress only on the legacy BH Galaxy runner (bh-galaxy-revc).
-# Other boards, version verify, snapshot, and metal upstream are disabled.
+# Other boards and version verify stay disabled.
 #
 # Self-hosted runners may log "sudo: unable to resolve host ubuntu" when hostname is not in
 # /etc/hosts — harmless. To silence: echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts
@@ -117,4 +117,29 @@ jobs:
           GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
         run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" bash .github/scripts/smi-reset.sh
 
-      # Snapshot / metal upstream / ttnn disabled for this throwaway test.
+      - name: SMI snapshot (tt-smi -s)
+        env:
+          VENV_DIR: /root/.tenstorrent-venv
+        run: sudo -E env VENV_DIR="${VENV_DIR}" bash .github/scripts/smi-snapshot.sh
+
+      - name: Metal upstream tests (upstream-tests-bh)
+        timeout-minutes: 120
+        env:
+          GOLDEN_JSON: ${{ github.workspace }}/golden.json
+          GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
+          METAL_UPSTREAM_LOG: ${{ github.workspace }}/metal-upstream-${{ matrix.runner }}.log
+        run: |
+          sudo -E env \
+            GOLDEN_JSON="${GOLDEN_JSON}" \
+            GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
+            GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
+            METAL_UPSTREAM_LOG="${METAL_UPSTREAM_LOG}" \
+            bash .github/scripts/metal-upstream.sh
+
+      - name: Upload metal upstream log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: metal-upstream-${{ matrix.runner }}-output
+          path: ${{ github.workspace }}/metal-upstream-${{ matrix.runner }}.log
+          if-no-files-found: warn
