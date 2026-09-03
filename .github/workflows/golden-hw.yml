@@ -1,9 +1,8 @@
-# Install golden stack on self-hosted runners, verify versions, stress-test tt-smi reset,
-# ttnn unit test (tt-metalium release), and metal upstream (upstream-tests-bh).
-# Runners mirror tenstorrent/tt-smi/.github/workflows/test.yml (test-hardware job).
+# THROWAWAY TEST BRANCH — do not merge.
+# Overlay unreleased tt-smi (tenstorrent/tt-smi#255, sbansal/new_glx_reset) and run
+# -glx_reset stress only on the legacy BH Galaxy runner (bh-galaxy-revc).
+# Other boards and version verify stay disabled.
 #
-# Runs on push to main / renovate/**, PRs touching golden files, workflow_dispatch,
-# or when called by golden-release.yml.
 # Self-hosted runners may log "sudo: unable to resolve host ubuntu" when hostname is not in
 # /etc/hosts — harmless. To silence: echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts
 name: Golden — hardware
@@ -71,18 +70,15 @@ jobs:
       fail-fast: false
       matrix:
         runner:
-          - p100a # syseng-gh-01
-          - p150a # syseng-gh-03
-          - p300a # yyz-zephyr-01
-          - quietbox2 # BH QuietBox (shared with system FW)
-          - bh-galaxy-revc # BH Galaxy (shared with system FW)
+          # Throwaway: only the legacy BH Galaxy host (older BMC; exercises 0x3 → 0x0 fallback).
+          - bh-galaxy-revc
 
     steps:
       - name: Checkout golden versions repo
         uses: actions/checkout@v4
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Install jq and git
+        run: sudo apt-get update && sudo apt-get install -y jq git
 
       - name: Install golden stack (tt-installer)
         env:
@@ -100,19 +96,24 @@ jobs:
             GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
             bash .github/scripts/golden-install.sh --hw --force-flash
 
-      - name: Verify installed smi matches golden.json
+      # Overlay PR tt-smi after the golden install. --no-deps keeps pyluwen/tt-umd
+      # from the installer pin; only the tt-smi sources change.
+      - name: Overlay unreleased tt-smi (sbansal/new_glx_reset)
         env:
-          GOLDEN_JSON: ${{ github.workspace }}/golden.json
           VENV_DIR: /root/.tenstorrent-venv
-          # HW install uses --no-install-sfpi; skip so stale host sfpi (e.g. QuietBox) does not fail.
-          SKIP_SFPI_VERSION_CHECK: "1"
-        run: sudo -E env GOLDEN_JSON="${GOLDEN_JSON}" VENV_DIR="${VENV_DIR}" SKIP_SFPI_VERSION_CHECK="${SKIP_SFPI_VERSION_CHECK}" bash .github/scripts/verify-versions.sh
+          # tenstorrent/tt-smi#255 @ 6cdccee — prefer op_mode 0x3, fall back to 0x0.
+          TT_SMI_GIT_REF: "git+https://github.com/tenstorrent/tt-smi.git@sbansal/new_glx_reset"
+        run: |
+          sudo "${VENV_DIR}/bin/pip" install --force-reinstall --no-deps "${TT_SMI_GIT_REF}"
+          echo "Overlaid tt-smi from ${TT_SMI_GIT_REF}"
+          sudo "${VENV_DIR}/bin/tt-smi" -v
 
-      - name: PCI reset stress (10x, installer tt-smi)
+      # Skip verify-versions.sh: installed smi will not match golden.json.
+
+      - name: Galaxy reset stress (10x, unreleased tt-smi -glx_reset)
         env:
           VENV_DIR: /root/.tenstorrent-venv
           NUM_RESETS: "10"
-          # smi-reset.sh selects tt-smi -glx_reset for bh-galaxy* labels; else -r.
           GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
         run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" bash .github/scripts/smi-reset.sh
 
@@ -120,18 +121,6 @@ jobs:
         env:
           VENV_DIR: /root/.tenstorrent-venv
         run: sudo -E env VENV_DIR="${VENV_DIR}" bash .github/scripts/smi-snapshot.sh
-
-      # - name: TTNN unit test (tt-metalium release container)
-      #   timeout-minutes: 30
-      #   env:
-      #     GOLDEN_JSON: ${{ github.workspace }}/golden.json
-      #     GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
-      #   run: |
-      #     sudo -E env \
-      #       GOLDEN_JSON="${GOLDEN_JSON}" \
-      #       GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
-      #       GITHUB_RUNNER_NAME="${GITHUB_RUNNER_NAME}" \
-      #       bash .github/scripts/ttnn-unit-test.sh
 
       - name: Metal upstream tests (upstream-tests-bh)
         timeout-minutes: 300
