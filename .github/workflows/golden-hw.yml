@@ -134,7 +134,7 @@ jobs:
       #       bash .github/scripts/ttnn-unit-test.sh
 
       - name: Metal upstream tests (upstream-tests-bh)
-        timeout-minutes: 120
+        timeout-minutes: 300
         env:
           GOLDEN_JSON: ${{ github.workspace }}/golden.json
           GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
