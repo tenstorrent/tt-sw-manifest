@@ -78,15 +78,14 @@ resolve_board_profile() {
 
   case "${board}" in
     p100a | p150a)
-      # Match tt-system-firmware metal.yml: do NOT set HF_MODEL on these boards.
-      # Their /opt/tenstorrent/hf-models/.../Llama-3.1-8B-Instruct trees are empty
-      # stubs; pointing HF_MODEL there makes transformers hit HuggingFace (gated)
-      # instead of using a real on-host cache. Use blackhole_no_models so the
-      # suite does not require Llama weights (firmware's older blackhole image
-      # similarly avoids weight-backed demos when env is unset).
-      : "${METAL_TARGET:=blackhole_no_models}"
+      # metal.yml "Set model env" is the same on every board: 8B Instruct.
+      # ci_boards.json metal-target for these cards is `blackhole` (not no_models).
+      : "${METAL_TARGET:=blackhole}"
       : "${UPSTREAM_IMAGE_REPO:=${UPSTREAM_REPO_BH}}"
       : "${PATCHES:=determinism,whisper_ci}"
+      : "${HF_MODEL:=${HF_LLAMA_8B}}"
+      : "${LLAMA_DIR:=${HF_LLAMA_8B}}"
+      : "${TT_CACHE_PATH:=${HF_LLAMA_8B}}"
       ;;
     p300a)
       # metal.yml sets HF_MODEL for p300a; runners have a populated Instruct cache.
