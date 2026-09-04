@@ -78,12 +78,12 @@ resolve_board_profile() {
 
   case "${board}" in
     p100a | p150a)
-      # Match tt-system-firmware metal.yml: do NOT set HF_MODEL on these boards.
-      # Their /opt/tenstorrent/hf-models/.../Llama-3.1-8B-Instruct trees are empty
-      # stubs; pointing HF_MODEL there makes transformers hit HuggingFace (gated)
-      # instead of using a real on-host cache. Use blackhole_no_models so the
-      # suite does not require Llama weights (firmware's older blackhole image
-      # similarly avoids weight-backed demos when env is unset).
+      # metal.yml sets HF_MODEL/LLAMA_DIR and runs target `blackhole` on these
+      # cards, but the syseng Instruct trees are stubs (no model_type). Firmware
+      # jobs inherit CI=true so simple_text_demo skips ("CI only runs the
+      # CI-only tests"). We docker-run without CI, so pointing HF_MODEL at the
+      # stub makes the Llama demo fail. Use blackhole_no_models and leave
+      # HF_MODEL unset — same executable suite firmware actually runs here.
       : "${METAL_TARGET:=blackhole_no_models}"
       : "${UPSTREAM_IMAGE_REPO:=${UPSTREAM_REPO_BH}}"
       : "${PATCHES:=determinism,whisper_ci}"
