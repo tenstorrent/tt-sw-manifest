@@ -52,6 +52,30 @@ The same suite runs on every relevant PR, on Renovate bump PRs, on pushes to `ma
 | `ubuntu-latest` (GitHub-hosted) | Distro container matrix (item 1) |
 | HW runners (self-hosted & shared with system FW) | Hardware suite (items 2–6) |
 
+## Offline test (your hardware)
+
+[`offline_manifest_test.sh`](offline_manifest_test.sh) is the same hardware flow as CI (install → flash → verify → reset ×10 → snapshot → metal upstream), run on a machine you have. Use it to check a [`golden.json`](golden.json) pin set before or instead of waiting on the self-hosted runners.
+
+```bash
+sudo ./offline_manifest_test.sh --hw p150a
+sudo ./offline_manifest_test.sh --hw wh-6u
+sudo ./offline_manifest_test.sh --hw bh-galaxy --skip-install   # re-run tests only
+./offline_manifest_test.sh --no-hw                             # install + verify, no device
+```
+
+`--hw` is required for device tests. Types: `p100a`, `p150a`, `p300a`, `quietbox2`, `loudbox`, `bh-galaxy`, `wh-6u`. Firmware flash is on by default (`--no-force-flash` to skip).
+
+Metal upstream expects host weights under `/opt/tenstorrent/hf-models` (override with `HF_MODELS_HOST` / `LLAMA_DIR`):
+
+| Board | Weights |
+|-------|---------|
+| p100a, p150a, p300a, quietbox2, bh-galaxy, wh-6u | `meta-llama/Llama-3.1-8B-Instruct` |
+| loudbox | `meta-llama/Llama-3.3-70B-Instruct` |
+
+If the tree is missing, the script prints a large warning and still does install / flash / reset. Metal upstream will likely fail until the weights are there. (CI p100a/p150a runners only have stub Instruct dirs, so those jobs use a no-models metal target; on your card, put real weights in place if you want the Llama demos.)
+
+A log is always written to `logs/offline_manifest_test-<timestamp>.log`, including when a step or the script itself fails. `--help` lists every flag and env var.
+
 ## Release
 
 Dispatch **Golden — release** from `main` when you want a published golden. The workflow re-runs the full CI suite above, then publishes a tagged GitHub Release (`vYYYY.MM.DD`). Routine push/PR CI does **not** publish a release.
