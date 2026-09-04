@@ -78,14 +78,15 @@ resolve_board_profile() {
 
   case "${board}" in
     p100a | p150a)
-      # metal.yml "Set model env" is the same on every board: 8B Instruct.
-      # ci_boards.json metal-target for these cards is `blackhole` (not no_models).
-      : "${METAL_TARGET:=blackhole}"
+      # metal.yml sets HF_MODEL/LLAMA_DIR and runs target `blackhole` on these
+      # cards, but the syseng Instruct trees are stubs (no model_type). Firmware
+      # jobs inherit CI=true so simple_text_demo skips ("CI only runs the
+      # CI-only tests"). We docker-run without CI, so pointing HF_MODEL at the
+      # stub makes the Llama demo fail. Use blackhole_no_models and leave
+      # HF_MODEL unset — same executable suite firmware actually runs here.
+      : "${METAL_TARGET:=blackhole_no_models}"
       : "${UPSTREAM_IMAGE_REPO:=${UPSTREAM_REPO_BH}}"
       : "${PATCHES:=determinism,whisper_ci}"
-      : "${HF_MODEL:=${HF_LLAMA_8B}}"
-      : "${LLAMA_DIR:=${HF_LLAMA_8B}}"
-      : "${TT_CACHE_PATH:=${HF_LLAMA_8B}}"
       ;;
     p300a)
       # metal.yml sets HF_MODEL for p300a; runners have a populated Instruct cache.
