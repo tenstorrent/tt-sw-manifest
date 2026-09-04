@@ -74,7 +74,7 @@ jobs:
           - p100a # syseng-gh-01
           - p150a # syseng-gh-03
           - p300a # yyz-zephyr-01
-          - quietbox2 # BH QuietBox (shared with system FW)
+          # - quietbox2 # BH QuietBox — not provisioned; previous runner is gone
           - bh-galaxy-revc # BH Galaxy (shared with system FW)
 
     steps:
