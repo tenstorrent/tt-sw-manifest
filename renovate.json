@@ -3,7 +3,7 @@
   "extends": [
     "config:recommended"
   ],
-  "description": "Golden.json bumps from Tenstorrent GitHub releases. Merge only after Golden — ttis and Golden — hardware are green on the Renovate PR.",
+  "description": "Golden.json bumps from Tenstorrent GitHub releases, except sfpi which is tracked from ppa.tenstorrent.com (the only source tt-installer can install). Merge only after Golden — ttis and Golden — hardware are green on the Renovate PR.",
   "branchPrefix": "renovate/",
   "dependencyDashboard": false,
   "timezone": "America/Toronto",
@@ -63,17 +63,18 @@
     },
     {
       "customType": "regex",
-      "description": "sfpi (SFPI compiler toolchain → sfpi apt/dnf package)",
+      "description": "sfpi (ppa.tenstorrent.com apt package; not GitHub — the PPA lags GH and is what tt-installer installs)",
       "managerFilePatterns": [
         "/golden\\.json$/"
       ],
       "matchStrings": [
         "\"sfpi\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
       ],
-      "datasourceTemplate": "github-releases",
+      "datasourceTemplate": "deb",
       "depNameTemplate": "sfpi",
-      "packageNameTemplate": "tenstorrent/sfpi",
-      "versioningTemplate": "semver"
+      "packageNameTemplate": "sfpi",
+      "registryUrlTemplate": "https://ppa.tenstorrent.com/ubuntu?suite=jammy&components=main&binaryArch=amd64",
+      "versioningTemplate": "deb"
     },
     {
       "customType": "regex",
@@ -152,7 +153,7 @@
       "extractVersion": "^v(?<version>.*)$"
     },
     {
-      "description": "SFPI: tags are plain semver (e.g. 7.60.0); ignore per-variant build snapshots like 7.60.0-nv-46064",
+      "description": "SFPI: PPA versions are plain X.Y.Z (ignore any debian revision suffix)",
       "matchDepNames": [
         "sfpi"
       ],
