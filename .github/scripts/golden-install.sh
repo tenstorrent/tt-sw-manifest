@@ -223,6 +223,7 @@ if [[ "${HW}" -eq 1 ]]; then
   echo "kmd:         ${KMD_VER}"
   echo "smi:         ${SMI_VER}"
   echo "flash:       ${FLASH_VER}"
+  echo "sfpi:        ${SFPI_VER:-(latest)}"
   echo "firmware:    ${FW_VER} (${FW_NOTE})"
   echo "metal-version: ${METAL_VERSION}"
   echo "  release:   ${METALIUM_RELEASE_IMAGE} (installer)"
@@ -238,7 +239,8 @@ if [[ "${HW}" -eq 1 ]]; then
   # Runners already have docker/podman; do not let the installer install one.
   CONTAINER_RUNTIME_ARGS=(--install-container-runtime none)
   METALIUM_TAG_ARGS=(--metalium-image-tag "${METAL_VERSION}")
-  SFPI_ARGS=(--no-install-sfpi)
+  SFPI_ARGS=(--install-sfpi)
+  [[ -n "${SFPI_VER}" ]] && SFPI_ARGS+=(--sfpi-version "${SFPI_VER}")
   PYTHON_ARGS=(--python-choice new-venv)
   EXPORT_ARGS=()
 else
@@ -274,8 +276,11 @@ else
     TTIS_URL="${TTIS_URL:-https://github.com/${INSTALLER_REPO}/releases/download/${INSTALLER_TAG}/ttis.sh}"
     curl -fsSL "${TTIS_URL}" -o /tmp/ttis.sh
   else
+    # Same host software stack as the golden-ttis export run, minus schema write.
+    echo "sfpi:        ${SFPI_VER:-(latest)}"
     HUGE_PAGES_ARGS=(--no-install-hugepages)
-    SFPI_ARGS=(--no-install-sfpi)
+    SFPI_ARGS=(--install-sfpi)
+    [[ -n "${SFPI_VER}" ]] && SFPI_ARGS+=(--sfpi-version "${SFPI_VER}")
     EXPORT_ARGS=()
   fi
 
