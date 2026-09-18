@@ -230,9 +230,9 @@ check_row() {
   printf "| %-12s | %-14s | %-14s | %-4s |\n" "${name}" "${expected}" "${actual}" "${ok}"
 }
 
-# For packages that are only installed on some paths (e.g. sfpi/tenstorrent-tools
-# in the no-hw export run, but not on the HW path): check when both a golden pin
-# and an installed version are present; otherwise report SKIP without failing.
+# For packages that are only installed on some paths (e.g. tenstorrent-tools /
+# hugepages): check when both a golden pin and an installed version are present;
+# otherwise report SKIP without failing.
 check_optional_row() {
   local name="$1"
   local expected="$2"
@@ -262,12 +262,10 @@ fi
 check_row "kmd" "${EXPECTED_KMD}" "${ACTUAL_KMD}"
 check_row "smi" "${EXPECTED_SMI}" "${ACTUAL_SMI}"
 check_row "flash" "${EXPECTED_FLASH}" "${ACTUAL_FLASH}"
-if [[ "${SKIP_SFPI_VERSION_CHECK:-0}" == "1" ]]; then
-  # HW golden-install passes --no-install-sfpi; leftover host packages (e.g. QuietBox)
-  # must not fail the job the way "not installed" already SKIPs on other runners.
-  printf "| %-12s | %-14s | %-14s | %-4s |\n" "sfpi" "${EXPECTED_SFPI:-(not pinned)}" "${ACTUAL_SFPI:-(absent)}" "SKIP"
+if [[ -n "${EXPECTED_SFPI}" ]]; then
+  check_row "sfpi" "${EXPECTED_SFPI}" "${ACTUAL_SFPI}"
 else
-  check_optional_row "sfpi" "${EXPECTED_SFPI}" "${ACTUAL_SFPI}"
+  printf "| %-12s | %-14s | %-14s | %-4s |\n" "sfpi" "(not pinned)" "${ACTUAL_SFPI:-(absent)}" "SKIP"
 fi
 check_optional_row "hugepages" "${EXPECTED_TOOLS}" "${ACTUAL_TOOLS}"
 echo ""

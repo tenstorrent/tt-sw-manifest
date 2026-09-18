@@ -752,8 +752,6 @@ if [[ "${MODE}" == hw ]]; then
   export GOLDEN_RUNNER_LABEL="${RUNNER_LABEL}"
   export GITHUB_RUNNER_NAME="${RUNNER_LABEL}"
   export SMI_RESET_MODE="${SMI_RESET_MODE}"
-  # HW install uses --no-install-sfpi; skip so a stale host sfpi does not fail verify.
-  export SKIP_SFPI_VERSION_CHECK="${SKIP_SFPI_VERSION_CHECK:-1}"
 fi
 
 banner "Offline manifest test"
@@ -823,7 +821,6 @@ fi
 
 run_script "verify-versions.sh" \
   env GOLDEN_JSON="${GOLDEN_JSON}" VENV_DIR="${VENV_DIR}" \
-      SKIP_SFPI_VERSION_CHECK="${SKIP_SFPI_VERSION_CHECK:-}" \
       bash "${SCRIPTS_DIR}/verify-versions.sh" || true
 
 if [[ "${MODE}" == hw ]]; then
