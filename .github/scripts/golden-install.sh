@@ -111,7 +111,7 @@ resolve_metal_upstream_repo() {
   case "${label}" in
     p300a* | */p300a | *-p300a*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_P300}" ;;
     quietbox2* | *-quietbox2*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_QB_GE}" ;;
-    wh-glx* | *-wh-glx* | wh-6u* | *-wh-6u*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_WH_6U}" ;;
+    wh-galaxy* | *-wh-galaxy* | wh-6u* | *-wh-6u*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_WH_6U}" ;;
     bh-galaxy* | *-bh-galaxy* | *galaxy*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_GLX}" ;;
     *) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO}" ;;
   esac
