@@ -6,7 +6,7 @@
 #   SMI_RESET_MODE=pci|glx
 #   SMI_RESET_ARGS='-glx_reset'   # raw args after tt-smi (wins over MODE)
 # Or set GOLDEN_RUNNER_LABEL / GITHUB_RUNNER_NAME to a galaxy label
-# (bh-galaxy* or wh-glx).
+# (bh-galaxy* or wh-galaxy). wh-galaxy must be matched before *galaxy*.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,7 +41,7 @@ resolve_reset_args() {
   local mode="${SMI_RESET_MODE:-}"
   if [[ -z "${mode}" ]]; then
     case "${RUNNER_LABEL}" in
-      wh-glx* | *-wh-glx* | wh-6u* | *-wh-6u*) mode=glx ;;
+      wh-galaxy* | *-wh-galaxy* | wh-6u* | *-wh-6u*) mode=glx ;;
       bh-galaxy* | *-bh-galaxy* | *galaxy*) mode=glx ;;
       *) mode=pci ;;
     esac

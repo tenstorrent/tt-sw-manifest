@@ -2,7 +2,7 @@
 # Metal upstream tests — mirrors tt-system-firmware metal.yml:
 # host KMD/firmware (no re-flash), upstream-tests-bh* image, hf-models mount,
 # board-specific METAL_TARGET / HF_MODEL, and the same script patches.
-# wh-glx follows offline_manifest_test.sh --hw wh-6u: upstream-tests-wh-6u,
+# wh-galaxy follows offline_manifest_test.sh --hw wh-6u: upstream-tests-wh-6u,
 # image default target, glx-style device mount, Llama-3.1-8B-Instruct.
 set -euo pipefail
 
@@ -126,7 +126,7 @@ resolve_board_profile() {
     *)
       if [[ -z "${METAL_TARGET}" ]]; then
         echo "FAIL: unknown runner label '${board}'." >&2
-        echo "  Set GOLDEN_RUNNER_LABEL to p100a|p150a|p300a|quietbox2|loudbox|bh-galaxy|wh-glx," >&2
+        echo "  Set GOLDEN_RUNNER_LABEL to p100a|p150a|p300a|quietbox2|loudbox|bh-galaxy|wh-galaxy," >&2
         echo "  or export METAL_TARGET (and optionally METAL_UPSTREAM_IMAGE_REPO / HF_MODEL)." >&2
         return 1
       fi
@@ -195,7 +195,7 @@ EOF
 # upstream-tests-wh-6u at the golden tag, image default target (wh_6u), hugepages-1G,
 # optional ipmi, and Llama-3.1-8B-Instruct as HF_MODEL / TT_CACHE_PATH.
 # No BH entrypoint patches and no job timeout (CI dropped the metal timeout).
-run_wh_glx_metal_upstream() {
+run_wh_galaxy_metal_upstream() {
   local image llama_dir rc
   image="$(metal_upstream_image_ref "${UPSTREAM_REPO_WH_6U}" "${METAL_UPSTREAM_TAG}")"
   llama_dir="${LLAMA_DIR:-${HF_MODELS_HOST}/meta-llama/Llama-3.1-8B-Instruct}"
@@ -316,14 +316,15 @@ case "${RUNNER_LABEL}" in
   p300a* | */p300a | *-p300a*) BOARD=p300a ;;
   quietbox2* | *-quietbox2*) BOARD=quietbox2 ;;
   loudbox* | *-loudbox*) BOARD=loudbox ;;
-  wh-glx* | *-wh-glx* | wh-6u* | *-wh-6u*) BOARD=wh-glx ;;
+  # Before *galaxy*: wh-galaxy also matches that BH catch-all.
+  wh-galaxy* | *-wh-galaxy* | wh-6u* | *-wh-6u*) BOARD=wh-galaxy ;;
   bh-galaxy* | *-bh-galaxy* | *galaxy*) BOARD=bh-galaxy ;;
 esac
 
 # Wormhole Galaxy is not the BH metal.yml path. Same docker run as
 # offline_manifest_test.sh run_wh_6u_metal_upstream.
-if [[ "${BOARD}" == "wh-glx" ]]; then
-  run_wh_glx_metal_upstream
+if [[ "${BOARD}" == "wh-galaxy" ]]; then
+  run_wh_galaxy_metal_upstream
   exit 0
 fi
 
