@@ -112,18 +112,24 @@ resolve_board_profile() {
       : "${HF_MODEL:=${HF_LLAMA_70B}}"
       : "${LLAMA_DIR:=${HF_LLAMA_70B}}"
       ;;
-    bh-galaxy)
+    bh-galaxy | bh-galaxy-revc)
       # Match metal.yml "Set model env": Llama-3.1-8B-Instruct for HF_MODEL + LLAMA_DIR.
       : "${METAL_TARGET:=blackhole_glx}"
       : "${UPSTREAM_IMAGE_REPO:=${UPSTREAM_REPO_BH_GLX}}"
-      : "${PATCHES:=determinism,whisper_ci}"
+      if [[ "${board}" == "bh-galaxy-revc" ]]; then
+        # Rev C is cabled XY torus plus Z (QSFP-DD 7-14). Same descriptor swap as
+        # tt-system-firmware metal.yml when board == bh-galaxy-revc.
+        : "${PATCHES:=determinism,whisper_ci,galaxy_z_ports}"
+      else
+        : "${PATCHES:=determinism,whisper_ci}"
+      fi
       : "${HF_MODEL:=${HF_LLAMA_8B}}"
       : "${LLAMA_DIR:=${HF_LLAMA_8B}}"
       ;;
     *)
       if [[ -z "${METAL_TARGET}" ]]; then
         echo "FAIL: unknown runner label '${board}'." >&2
-        echo "  Set GOLDEN_RUNNER_LABEL to p100a|p150a|p300a|quietbox2|loudbox|bh-galaxy," >&2
+        echo "  Set GOLDEN_RUNNER_LABEL to p100a|p150a|p300a|quietbox2|loudbox|bh-galaxy|bh-galaxy-revc," >&2
         echo "  or export METAL_TARGET (and optionally METAL_UPSTREAM_IMAGE_REPO / HF_MODEL)." >&2
         return 1
       fi
@@ -183,6 +189,12 @@ if [[ "\${PATCHES}" == *determinism* ]]; then
   sed -i 's/--determinism-check-interval 1/--determinism-check-interval 0/g' '${UPSTREAM_SCRIPT}'
 fi
 
+if [[ "\${PATCHES}" == *galaxy_z_ports* ]]; then
+  # The galaxy has Z port cables, which the deploy ethernet tests require.
+  sed -i 's/bh_galaxy_xy_torus\.textproto/bh_galaxy_xy_torus_z_ports.textproto/g' \\
+    '${UPSTREAM_SCRIPT}'
+fi
+
 '${UPSTREAM_SCRIPT}' '${METAL_TARGET}'
 EOF
   chmod +x "${out}"
@@ -216,6 +228,8 @@ case "${RUNNER_LABEL}" in
   p300a* | */p300a | *-p300a*) BOARD=p300a ;;
   quietbox2* | *-quietbox2*) BOARD=quietbox2 ;;
   loudbox* | *-loudbox*) BOARD=loudbox ;;
+  # Before bh-galaxy*: bh-galaxy-revc is a prefix of that pattern.
+  bh-galaxy-revc* | *-bh-galaxy-revc*) BOARD=bh-galaxy-revc ;;
   bh-galaxy* | *-bh-galaxy* | *galaxy*) BOARD=bh-galaxy ;;
 esac
 
@@ -337,7 +351,7 @@ run_in_container() {
   fi
 
   local -a device_args=(--device /dev/tenstorrent)
-  if [[ "${BOARD}" == "bh-galaxy" && -e /dev/ipmi0 ]]; then
+  if [[ "${BOARD}" == bh-galaxy* && -e /dev/ipmi0 ]]; then
     device_args+=(--device /dev/ipmi0)
   fi
 
