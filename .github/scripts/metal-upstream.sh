@@ -2,6 +2,8 @@
 # Metal upstream tests — mirrors tt-system-firmware metal.yml:
 # host KMD/firmware (no re-flash), upstream-tests-bh* image, hf-models mount,
 # board-specific METAL_TARGET / HF_MODEL, and the same script patches.
+# wh-galaxy follows offline_manifest_test.sh --hw wh-6u: upstream-tests-wh-6u,
+# image default target, glx-style device mount, Llama-3.1-8B-Instruct.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,6 +41,7 @@ readonly UPSTREAM_REPO_BH="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh"
 readonly UPSTREAM_REPO_BH_P300="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-p300"
 readonly UPSTREAM_REPO_BH_QB_GE="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-qb-ge"
 readonly UPSTREAM_REPO_BH_GLX="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-glx"
+readonly UPSTREAM_REPO_WH_6U="ghcr.io/tenstorrent/tt-metal/upstream-tests-wh-6u"
 
 normalize_metal_image_tag() {
   local tag="${1:?}"
@@ -123,7 +126,7 @@ resolve_board_profile() {
     *)
       if [[ -z "${METAL_TARGET}" ]]; then
         echo "FAIL: unknown runner label '${board}'." >&2
-        echo "  Set GOLDEN_RUNNER_LABEL to p100a|p150a|p300a|quietbox2|loudbox|bh-galaxy," >&2
+        echo "  Set GOLDEN_RUNNER_LABEL to p100a|p150a|p300a|quietbox2|loudbox|bh-galaxy|wh-galaxy," >&2
         echo "  or export METAL_TARGET (and optionally METAL_UPSTREAM_IMAGE_REPO / HF_MODEL)." >&2
         return 1
       fi
@@ -188,6 +191,103 @@ EOF
   chmod +x "${out}"
 }
 
+# WH Galaxy metal upstream. Matches offline_manifest_test.sh run_wh_6u_metal_upstream:
+# upstream-tests-wh-6u at the golden tag, image default target (wh_6u), hugepages-1G,
+# optional ipmi, and Llama-3.1-8B-Instruct as HF_MODEL / TT_CACHE_PATH.
+# No BH entrypoint patches and no job timeout (CI dropped the metal timeout).
+run_wh_galaxy_metal_upstream() {
+  local image llama_dir rc
+  image="$(metal_upstream_image_ref "${UPSTREAM_REPO_WH_6U}" "${METAL_UPSTREAM_TAG}")"
+  llama_dir="${LLAMA_DIR:-${HF_MODELS_HOST}/meta-llama/Llama-3.1-8B-Instruct}"
+
+  if [[ ! -d /dev/hugepages-1G ]]; then
+    echo "FAIL: /dev/hugepages-1G is missing" >&2
+    echo "  Run golden-install.sh --hw (uses --install-hugepages)." >&2
+    return 1
+  fi
+  if [[ ! -e /dev/tenstorrent ]]; then
+    echo "FAIL: /dev/tenstorrent is missing" >&2
+    return 1
+  fi
+  if [[ ! -d "${llama_dir}" ]] || [[ ! -f "${llama_dir}/config.json" && ! -f "${llama_dir}/tokenizer.json" ]]; then
+    echo "FAIL: weights missing at ${llama_dir} (need config.json or tokenizer.json)" >&2
+    return 1
+  fi
+
+  if [[ -z "${CONTAINER_CMD:-}" ]]; then
+    if command -v docker >/dev/null 2>&1; then
+      CONTAINER_CMD=docker
+    elif command -v podman >/dev/null 2>&1; then
+      CONTAINER_CMD=podman
+    else
+      echo "docker or podman is required" >&2
+      return 1
+    fi
+  fi
+
+  printf '\n========== Metal upstream tests (upstream-tests-wh-6u) ==========\n'
+  echo "golden.json pins:"
+  jq -r '
+    "  installer:     \(.installer)",
+    "  kmd:           \(.kmd)",
+    "  smi:           \(.smi)",
+    "  flash:         \(.flash)",
+    "  firmware:      \(.firmware)",
+    "  metal-version: \(.["metal-version"] // .["metalium-image-tag"] // "n/a")",
+    "  metal-upstream-tag: \(.["metal-upstream-tag"] // "(fallback to metal-version)")"
+  ' "${GOLDEN_JSON}"
+  echo "running:"
+  echo "  metal-upstream-tag: ${METAL_UPSTREAM_TAG}"
+  echo "  image:              ${image}"
+  echo "  target:             wh_6u (image default)"
+  echo "  board:              ${BOARD}"
+  echo "  runner label:       ${RUNNER_LABEL:-n/a}"
+  echo "  instance:           ${GITHUB_RUNNER_NAME:-n/a}"
+  echo "  runtime:            ${CONTAINER_CMD}"
+  echo "  LLAMA_DIR:          ${llama_dir}"
+  echo "  HF_MODEL:           ${llama_dir}"
+  echo "  TT_CACHE_PATH:      ${llama_dir}"
+
+  if ! ${CONTAINER_CMD} pull "${image}"; then
+    echo "FAIL: could not pull ${image}" >&2
+    return 1
+  fi
+
+  LOG_FILE="${METAL_UPSTREAM_LOG:-}"
+  if [[ -z "${LOG_FILE}" ]]; then
+    if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
+      LOG_FILE="${GITHUB_WORKSPACE}/metal-upstream-${BOARD:-unknown}.log"
+    else
+      LOG_FILE="/tmp/metal-upstream-output.log"
+    fi
+  fi
+
+  local -a device_args=(--device /dev/tenstorrent)
+  if [[ -e /dev/ipmi0 ]]; then
+    device_args+=(--device /dev/ipmi0)
+  fi
+
+  echo "Full upstream log: ${LOG_FILE}"
+  # Do not run tt-smi / Luwen tools while this container is up.
+  set +e
+  ${CONTAINER_CMD} run --rm \
+    -v /dev/hugepages-1G:/dev/hugepages-1G \
+    "${device_args[@]}" \
+    -v "${llama_dir}:${llama_dir}" \
+    -e HF_MODEL="${llama_dir}" \
+    -e TT_CACHE_PATH="${llama_dir}" \
+    "${image}" 2>&1 | tee "${LOG_FILE}"
+  rc=${PIPESTATUS[0]}
+  set -e
+  chmod a+r "${LOG_FILE}" 2>/dev/null || true
+
+  if [[ "${rc}" -ne 0 ]]; then
+    echo "FAIL: metal upstream tests failed (full log: ${LOG_FILE})" >&2
+    return 1
+  fi
+  echo "PASS: metal upstream (wh_6u) (full log: ${LOG_FILE})"
+}
+
 if [[ ! -f "${GOLDEN_JSON}" ]]; then
   echo "golden.json not found at ${GOLDEN_JSON}" >&2
   exit 1
@@ -216,8 +316,17 @@ case "${RUNNER_LABEL}" in
   p300a* | */p300a | *-p300a*) BOARD=p300a ;;
   quietbox2* | *-quietbox2*) BOARD=quietbox2 ;;
   loudbox* | *-loudbox*) BOARD=loudbox ;;
+  # Before *galaxy*: wh-galaxy also matches that BH catch-all.
+  wh-galaxy* | *-wh-galaxy* | wh-6u* | *-wh-6u*) BOARD=wh-galaxy ;;
   bh-galaxy* | *-bh-galaxy* | *galaxy*) BOARD=bh-galaxy ;;
 esac
+
+# Wormhole Galaxy is not the BH metal.yml path. Same docker run as
+# offline_manifest_test.sh run_wh_6u_metal_upstream.
+if [[ "${BOARD}" == "wh-galaxy" ]]; then
+  run_wh_galaxy_metal_upstream
+  exit 0
+fi
 
 resolve_board_profile "${BOARD}"
 golden_check_hugepages
