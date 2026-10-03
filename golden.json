@@ -1,10 +1,10 @@
 {
   "kmd": "2.11.0",
   "smi": "6.6.0",
-  "flash": "4.0.0",
-  "sfpi": "7.71.0",
+  "flash": "4.1.0",
+  "sfpi": "7.83.0",
   "hugepages": "1.4.1",
   "firmware": "19.15.0",
-  "metal-version": "v0.78.0",
-  "installer": "3.6.0"
+  "metal-version": "v0.79.0",
+  "installer": "3.6.1"
 }
