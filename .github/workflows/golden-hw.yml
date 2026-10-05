@@ -1,6 +1,7 @@
-# Install golden stack on self-hosted runners, verify versions, stress-test tt-smi reset,
-# ttnn unit test (tt-metalium release), and metal upstream (upstream-tests-bh).
-# Runners mirror tenstorrent/tt-smi/.github/workflows/test.yml (test-hardware job).
+# THROWAWAY TEST BRANCH — do not merge.
+# Install the golden stack, then overlay unreleased tt-smi from
+# tenstorrent/tt-smi sbansal/bump_umd_9.12 (tt-umd 0.9.12, pyluwen 0.10.0)
+# and run the usual hardware checks against that build.
 #
 # Runs on push to main / renovate/**, PRs touching golden files, workflow_dispatch,
 # or when called by golden-release.yml.
@@ -81,8 +82,8 @@ jobs:
       - name: Checkout golden versions repo
         uses: actions/checkout@v4
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Install jq and git
+        run: sudo apt-get update && sudo apt-get install -y jq git
 
       - name: Install golden stack (tt-installer)
         env:
@@ -99,6 +100,24 @@ jobs:
             GOLDEN_JSON="${GOLDEN_JSON}" \
             GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
             bash .github/scripts/golden-install.sh --hw --force-flash
+
+      # Replace PyPI tt-smi 6.6.0 with sbansal/bump_umd_9.12. The package version
+      # stays 6.6.0; the branch only moves tt-umd to 0.9.12 and pyluwen to 0.10.0.
+      # --no-deps skips the resolver fight with tt-flash (pyluwen~=0.9.0).
+      - name: Overlay tt-smi (sbansal/bump_umd_9.12)
+        env:
+          VENV_DIR: /root/.tenstorrent-venv
+          TT_SMI_GIT_REF: "git+https://github.com/tenstorrent/tt-smi.git@sbansal/bump_umd_9.12"
+        run: |
+          sudo "${VENV_DIR}/bin/pip" install --upgrade --force-reinstall --no-deps "${TT_SMI_GIT_REF}"
+          sudo "${VENV_DIR}/bin/pip" install --upgrade --force-reinstall --no-deps "tt-umd==0.9.12" "pyluwen==0.10.0"
+          echo "Overlaid tt-smi from ${TT_SMI_GIT_REF}"
+          sudo "${VENV_DIR}/bin/tt-smi" -v
+          sudo "${VENV_DIR}/bin/pip" show tt-smi tt-umd pyluwen
+          umd="$(sudo "${VENV_DIR}/bin/pip" show tt-umd | awk '/^Version:/{print $2}')"
+          luwen="$(sudo "${VENV_DIR}/bin/pip" show pyluwen | awk '/^Version:/{print $2}')"
+          test "${umd}" = "0.9.12"
+          test "${luwen}" = "0.10.0"
 
       - name: Verify installed smi matches golden.json
         env:

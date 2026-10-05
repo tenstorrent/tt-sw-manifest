@@ -59,7 +59,8 @@ jobs:
   build-test:
     name: Install + export + test (${{ matrix.slug }})
     needs: pre_job
-    if: needs.pre_job.outputs.should_skip != 'true'
+    # Throwaway tt-smi overlay branch — distro/.ttis jobs still install the PyPI pin.
+    if: false
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
