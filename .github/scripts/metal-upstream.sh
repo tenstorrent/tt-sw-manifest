@@ -207,10 +207,17 @@ EOF
 # upstream-tests-wh-6u at the golden tag, image default target (wh_6u), hugepages-1G,
 # optional ipmi, and Llama-3.1-8B-Instruct as HF_MODEL / TT_CACHE_PATH.
 # No BH entrypoint patches and no job timeout (CI dropped the metal timeout).
+#
+# Auto-discovery plus the 6U FABRIC_1D_RING reinit builds a 32x1 system mesh.
+# Llama DP then cannot reshape that to 4x8. Pin the 8x4 galaxy descriptor so
+# the control plane stays rotatable to 4x8.
+readonly WH_GALAXY_MESH_GRAPH_DESC="/home/user/tt-metal/tt_metal/fabric/mesh_graph_descriptors/single_galaxy_mesh_graph_descriptor.textproto"
+
 run_wh_galaxy_metal_upstream() {
-  local image llama_dir rc
+  local image llama_dir mesh_graph_desc rc
   image="$(metal_upstream_image_ref "${UPSTREAM_REPO_WH_6U}" "${METAL_UPSTREAM_TAG}")"
   llama_dir="${LLAMA_DIR:-${HF_MODELS_HOST}/meta-llama/Llama-3.1-8B-Instruct}"
+  mesh_graph_desc="${TT_MESH_GRAPH_DESC_PATH:-${WH_GALAXY_MESH_GRAPH_DESC}}"
 
   if [[ ! -d /dev/hugepages-1G ]]; then
     echo "FAIL: /dev/hugepages-1G is missing" >&2
@@ -259,6 +266,7 @@ run_wh_galaxy_metal_upstream() {
   echo "  LLAMA_DIR:          ${llama_dir}"
   echo "  HF_MODEL:           ${llama_dir}"
   echo "  TT_CACHE_PATH:      ${llama_dir}"
+  echo "  mesh graph:         ${mesh_graph_desc}"
 
   if ! ${CONTAINER_CMD} pull "${image}"; then
     echo "FAIL: could not pull ${image}" >&2
@@ -288,6 +296,7 @@ run_wh_galaxy_metal_upstream() {
     -v "${llama_dir}:${llama_dir}" \
     -e HF_MODEL="${llama_dir}" \
     -e TT_CACHE_PATH="${llama_dir}" \
+    -e TT_MESH_GRAPH_DESC_PATH="${mesh_graph_desc}" \
     "${image}" 2>&1 | tee "${LOG_FILE}"
   rc=${PIPESTATUS[0]}
   set -e
