@@ -80,6 +80,7 @@ readonly GOLDEN_METAL_UPSTREAM_REPO="ghcr.io/tenstorrent/tt-metal/upstream-tests
 readonly GOLDEN_METAL_UPSTREAM_REPO_P300="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-p300"
 readonly GOLDEN_METAL_UPSTREAM_REPO_QB_GE="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-qb-ge"
 readonly GOLDEN_METAL_UPSTREAM_REPO_GLX="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-glx"
+readonly GOLDEN_METAL_UPSTREAM_REPO_WH_6U="ghcr.io/tenstorrent/tt-metal/upstream-tests-wh-6u"
 
 normalize_metal_image_tag() {
   local tag="${1:?}"
@@ -110,6 +111,7 @@ resolve_metal_upstream_repo() {
   case "${label}" in
     p300a* | */p300a | *-p300a*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_P300}" ;;
     quietbox2* | *-quietbox2*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_QB_GE}" ;;
+    wh-galaxy* | *-wh-galaxy* | wh-6u* | *-wh-6u*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_WH_6U}" ;;
     bh-galaxy* | *-bh-galaxy* | *galaxy*) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO_GLX}" ;;
     *) printf '%s\n' "${GOLDEN_METAL_UPSTREAM_REPO}" ;;
   esac
