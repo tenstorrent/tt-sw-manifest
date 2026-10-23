@@ -72,11 +72,12 @@ jobs:
       fail-fast: false
       matrix:
         runner:
-          - p100a # syseng-gh-01
-          - p150a # syseng-gh-03
-          - p300a # yyz-zephyr-01
-          - quietbox2 # BH QuietBox
-          - bh-galaxy-revc # BH Galaxy (shared with system FW)
+          # TEMP: wh-galaxy only while iterating. Restore the other runners before merge.
+          # - p100a # syseng-gh-01
+          # - p150a # syseng-gh-03
+          # - p300a # yyz-zephyr-01
+          # - quietbox2 # BH QuietBox
+          # - bh-galaxy-revc # BH Galaxy (shared with system FW)
           - wh-galaxy # WH Galaxy (whgx-sfw-01) — metal path matches offline wh-6u
 
     steps:
