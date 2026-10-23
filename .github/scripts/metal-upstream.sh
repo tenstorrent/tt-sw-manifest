@@ -209,9 +209,9 @@ EOF
 # No BH entrypoint patches and no job timeout (CI dropped the metal timeout).
 #
 # Auto-discovery plus the 6U FABRIC_1D_RING reinit builds a 32x1 system mesh.
-# Llama DP then cannot reshape that to 4x8. Pin the 8x4 galaxy descriptor so
-# the control plane stays rotatable to 4x8.
-readonly WH_GALAXY_MESH_GRAPH_DESC="/home/user/tt-metal/tt_metal/fabric/mesh_graph_descriptors/single_galaxy_mesh_graph_descriptor.textproto"
+# Llama DP then cannot reshape that to 4x8. FABRIC_1D_RING requests TORUS_XY,
+# which a MESH descriptor cannot satisfy, so pin the 8x4 torus-XY descriptor.
+readonly WH_GALAXY_MESH_GRAPH_DESC="/home/user/tt-metal/tt_metal/fabric/mesh_graph_descriptors/single_galaxy_torus_xy_graph_descriptor.textproto"
 
 run_wh_galaxy_metal_upstream() {
   local image llama_dir mesh_graph_desc rc
