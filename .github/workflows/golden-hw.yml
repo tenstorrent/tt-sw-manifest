@@ -111,8 +111,18 @@ jobs:
           VENV_DIR: /root/.tenstorrent-venv
           NUM_RESETS: "10"
           # smi-reset.sh selects tt-smi -glx_reset for bh-galaxy* labels; else -r.
+          # bh-galaxy* also compares NVMe/RAID health before and after each reset.
           GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
-        run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" bash .github/scripts/smi-reset.sh
+          NVME_CHECK_ROOT: ${{ github.workspace }}/nvme-reset-check
+        run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" NVME_CHECK_ROOT="${NVME_CHECK_ROOT}" bash .github/scripts/smi-reset.sh
+
+      - name: Upload reset timing and NVMe check artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nvme-reset-check-${{ matrix.runner }}
+          path: ${{ github.workspace }}/nvme-reset-check
+          if-no-files-found: ignore
 
       - name: SMI snapshot (tt-smi -s)
         env:

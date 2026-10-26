@@ -119,6 +119,10 @@ ${C_BOLD}Environment${C_RST}
   GOLDEN_JSON              Path to golden.json (default: ./golden.json)
   VENV_DIR                 Installer venv (auto-detected after install)
   NUM_RESETS               smi-reset.sh count (default: 10)
+  NVME_RESET_CHECK         auto: NVMe/RAID checks on bh-galaxy*; 1 or 0 to force
+  NVME_CHECK_ROOT          Where reset timing and NVMe snapshots are written
+  NVME_DISCOVER_SECS       How long to wait for drives to return (default: 60)
+  NVME_POST_RESET_SECS     Extra settle time after drives reappear (default: 10)
   FORCE_FLASH              1 (default for --hw) force-flash; 0 skip
   HF_MODELS_HOST           Weight root (default: /opt/tenstorrent/hf-models)
   LLAMA_DIR                Override 8B Instruct path (WH 6U / boards that need it)
