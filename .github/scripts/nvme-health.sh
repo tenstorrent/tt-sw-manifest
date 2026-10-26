@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Snapshot and compare host NVMe / RAID health across a reset.
 #
-# smi-reset.sh runs this on BH Galaxy (bh-galaxy*) so tt-smi -glx_reset fails
-# when a reset drops E1.S drives. The checks are the ones used to validate the
+# smi-reset.sh runs this on every product so a reset fails when it drops
+# drives. The checks are the ones used to validate the
 # no-retimer Galaxy reset: drive identity, PCI address, RAID health and member
 # serials, failed-disk markers, read-write mounts, and new NVMe/RAID/PCIe-drop
 # lines in dmesg.

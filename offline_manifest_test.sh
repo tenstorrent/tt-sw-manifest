@@ -119,7 +119,7 @@ ${C_BOLD}Environment${C_RST}
   GOLDEN_JSON              Path to golden.json (default: ./golden.json)
   VENV_DIR                 Installer venv (auto-detected after install)
   NUM_RESETS               smi-reset.sh count (default: 10)
-  NVME_RESET_CHECK         auto: NVMe/RAID checks on bh-galaxy*; 1 or 0 to force
+  NVME_RESET_CHECK         NVMe/RAID checks (default: on; set 0 to skip)
   NVME_CHECK_ROOT          Where reset timing and NVMe snapshots are written
   NVME_DISCOVER_SECS       How long to wait for drives to return (default: 60)
   NVME_POST_RESET_SECS     Extra settle time after drives reappear (default: 10)

@@ -5,10 +5,9 @@
 # Every run is timed. The summary prints min, average, and max across the
 # attempts (PT-545).
 #
-# On BH Galaxy (runner label bh-galaxy*), each attempt also snapshots NVMe
-# drives and md RAID before the reset and compares them after. A dropped
-# drive, degraded array, read-only mount, or new NVMe/RAID/PCIe-drop line in
-# dmesg fails the run. Force with NVME_RESET_CHECK=1, or disable with
+# Every product snapshots NVMe drives and md RAID before each reset and
+# compares them after. A dropped drive, degraded array, read-only mount, or
+# new NVMe/RAID/PCIe-drop line in dmesg fails the run. Disable with
 # NVME_RESET_CHECK=0. Artifacts go to NVME_CHECK_ROOT.
 #
 # Override with:
@@ -97,13 +96,9 @@ NVME_CHECK_ROOT="${NVME_CHECK_ROOT:-${GITHUB_WORKSPACE:-/tmp}/nvme-reset-check}"
 
 want_nvme_check() {
   case "${NVME_RESET_CHECK:-auto}" in
-    1 | true | yes | on) return 0 ;;
     0 | false | no | off) return 1 ;;
+    *) return 0 ;;
   esac
-  case "${RUNNER_LABEL}" in
-    bh-galaxy* | *-bh-galaxy*) return 0 ;;
-  esac
-  return 1
 }
 
 format_ms() {
