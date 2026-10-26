@@ -41,7 +41,7 @@ The same suite runs on every relevant PR, on Renovate bump PRs, on pushes to `ma
 
 3. **Version verify** — On the HW runners, confirm installed packages/CLIs match [`golden.json`](golden.json) (`verify-versions.sh`).
 
-4. **PCI reset stress** — On the HW runners, run `tt-smi -r` ten times (`smi-reset.sh`).
+4. **PCI reset stress** — On the HW runners, run `tt-smi -r` ten times (`smi-reset.sh`; BH Galaxy uses `tt-smi -glx_reset`). Each reset is timed, and the log reports min, average, and max. On BH Galaxy the same step snapshots NVMe identities, PCI addresses, RAID members, and mounts before and after every reset and fails if a drive drops.
 
 5. **SMI snapshot** — On the HW runners, run `tt-smi -s` and print board state into the job log (`smi-snapshot.sh`).
 
