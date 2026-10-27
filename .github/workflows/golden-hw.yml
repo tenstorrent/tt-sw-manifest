@@ -78,6 +78,11 @@ jobs:
           - bh-galaxy-revc # BH Galaxy (shared with system FW)
 
     steps:
+      # smi-reset.sh runs under sudo and writes nvme-reset-check into the
+      # workspace. A later checkout cannot unlink those root-owned files.
+      - name: Remove root-owned reset artifacts
+        run: sudo rm -rf "${GITHUB_WORKSPACE}/nvme-reset-check"
+
       - name: Checkout golden versions repo
         uses: actions/checkout@v4
 
@@ -115,6 +120,13 @@ jobs:
           GOLDEN_RUNNER_LABEL: ${{ matrix.runner }}
           NVME_CHECK_ROOT: ${{ github.workspace }}/nvme-reset-check
         run: sudo -E env VENV_DIR="${VENV_DIR}" NUM_RESETS="${NUM_RESETS}" GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" NVME_CHECK_ROOT="${NVME_CHECK_ROOT}" bash .github/scripts/smi-reset.sh
+
+      - name: Return reset artifacts to the runner user
+        if: always()
+        run: |
+          if [[ -e "${GITHUB_WORKSPACE}/nvme-reset-check" ]]; then
+            sudo chown -R "$(id -u):$(id -g)" "${GITHUB_WORKSPACE}/nvme-reset-check"
+          fi
 
       - name: Upload reset timing and NVMe check artifacts
         if: always()
