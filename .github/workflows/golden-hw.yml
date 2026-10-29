@@ -99,11 +99,33 @@ jobs:
             echo "Waiting for apt lock..."
             sleep 5
           done
-          echo "Flashing firmware to the golden.json pin via tt-flash"
+          # TEST ONLY (do not merge): install without flashing, then flash with
+          # tt-flash from tenstorrent/tt-flash#122 instead of the released pin.
           sudo env \
             GOLDEN_JSON="${GOLDEN_JSON}" \
             GOLDEN_RUNNER_LABEL="${GOLDEN_RUNNER_LABEL}" \
-            bash .github/scripts/golden-install.sh --hw --force-flash
+            bash .github/scripts/golden-install.sh --hw
+
+      - name: Flash firmware with tt-flash from tt-flash#122
+        env:
+          GOLDEN_JSON: ${{ github.workspace }}/golden.json
+          VENV_DIR: /root/.tenstorrent-venv
+          TT_FLASH_REF: 7867363a08ac3044b3665f576ee60cb2ab311079 # sbansal/glx_new_bmc_ipmi_reset
+        run: |
+          FW_VER="$(jq -r '.firmware' "${GOLDEN_JSON}")"
+          FW_FILE="fw_pack-${FW_VER}.fwbundle"
+          curl -fsSLO "https://github.com/tenstorrent/tt-system-firmware/releases/download/v${FW_VER}/${FW_FILE}"
+          PKG="git+https://github.com/tenstorrent/tt-flash.git@${TT_FLASH_REF}"
+          # The installer venv is usually built by uv and may have no pip.
+          if sudo "${VENV_DIR}/bin/python" -m pip --version >/dev/null 2>&1; then
+            sudo "${VENV_DIR}/bin/python" -m pip install --force-reinstall --no-deps "${PKG}"
+          else
+            sudo env PATH="/root/.local/bin:${PATH}" uv pip install \
+              --python "${VENV_DIR}/bin/python" --reinstall --no-deps "${PKG}"
+          fi
+          sudo "${VENV_DIR}/bin/tt-flash" -v
+          echo "Flashing firmware ${FW_VER} via tt-flash@${TT_FLASH_REF}"
+          sudo "${VENV_DIR}/bin/tt-flash" flash "${FW_FILE}" --force
 
       - name: Verify installed smi matches golden.json
         env:
