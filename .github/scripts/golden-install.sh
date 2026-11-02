@@ -138,6 +138,54 @@ if [[ -z "${INSTALLER_URL}" ]]; then
   INSTALLER_URL="https://github.com/${INSTALLER_REPO}/releases/download/${INSTALLER_TAG}/install.sh"
 fi
 
+SUDO=""
+[[ "${EUID}" -ne 0 ]] && SUDO="sudo"
+
+# tt-installer installs tenstorrent-dkms from the Tenstorrent package repos, which
+# carry only final releases. A prerelease pin (e.g. 2.12.0-rc1) is installed here
+# from the tt-kmd GitHub release instead, and the installer skips the KMD.
+# GitHub asset names replace the Debian '~' with '.' (2.12.0~rc1 -> 2.12.0.rc1).
+kmd_is_prerelease() {
+  [[ "${KMD_VER}" == *-* ]]
+}
+
+install_kmd_prerelease() {
+  local asset_ver="${KMD_VER//-/.}"
+  local base="https://github.com/tenstorrent/tt-kmd/releases/download/ttkmd-${KMD_VER}"
+  local dir
+  dir="$(mktemp -d)"
+  echo "Installing prerelease KMD ${KMD_VER} from ${base}"
+  if command -v apt-get >/dev/null 2>&1; then
+    curl -fsSL "${base}/tenstorrent-dkms_${asset_ver}_all.deb" -o "${dir}/tenstorrent-dkms.deb"
+    ${SUDO} env DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-downgrades "${dir}/tenstorrent-dkms.deb"
+  elif command -v dnf >/dev/null 2>&1; then
+    curl -fsSL "${base}/tenstorrent-dkms-${asset_ver}-1.noarch.rpm" -o "${dir}/tenstorrent-dkms.rpm"
+    ${SUDO} dnf install -y "${dir}/tenstorrent-dkms.rpm"
+  else
+    echo "No apt-get or dnf; cannot install prerelease KMD" >&2
+    exit 1
+  fi
+  rm -rf "${dir}"
+}
+
+# Package install builds the module but does not replace one that is already
+# loaded. On hardware, make sure the running module is the pinned version.
+ensure_kmd_loaded() {
+  local loaded
+  loaded="$(cat /sys/module/tenstorrent/version 2>/dev/null || true)"
+  if [[ "${loaded}" != "${KMD_VER}" ]]; then
+    echo "Loaded KMD is '${loaded:-(none)}', want ${KMD_VER}; reloading tenstorrent module"
+    modprobe -r tenstorrent 2>/dev/null || true
+    modprobe tenstorrent
+    loaded="$(cat /sys/module/tenstorrent/version 2>/dev/null || true)"
+  fi
+  if [[ "${loaded}" != "${KMD_VER}" ]]; then
+    echo "Loaded KMD is '${loaded:-(none)}', expected ${KMD_VER}" >&2
+    exit 1
+  fi
+  echo "Loaded KMD: ${loaded}"
+}
+
 record_installer_venv() {
   local venv="${HOME}/.tenstorrent-venv"
   if [[ -x "${venv}/bin/python" ]]; then
@@ -296,12 +344,20 @@ else
   fi
 fi
 
+if kmd_is_prerelease; then
+  install_kmd_prerelease
+  [[ "${HW}" -eq 1 ]] && ensure_kmd_loaded
+  KMD_ARGS=(--no-install-kmd)
+else
+  KMD_ARGS=(--install-kmd --kmd-version "${KMD_VER}")
+fi
+
 curl -fsSL "${INSTALLER_URL}" -o /tmp/tt-install.sh
 chmod +x /tmp/tt-install.sh
 
 timeout "${INSTALL_TIMEOUT}" bash /tmp/tt-install.sh \
   --mode-non-interactive \
-  --install-kmd \
+  "${KMD_ARGS[@]}" \
   "${HUGE_PAGES_ARGS[@]}" \
   "${FW_UPDATE_ARGS[@]}" \
   "${METALIUM_ARGS[@]}" \
@@ -313,7 +369,6 @@ timeout "${INSTALL_TIMEOUT}" bash /tmp/tt-install.sh \
   "${CONTAINER_RUNTIME_ARGS[@]}" \
   "${PYTHON_ARGS[@]}" \
   --reboot-option never \
-  --kmd-version "${KMD_VER}" \
   --smi-version "${SMI_VER}" \
   --flash-version "${FLASH_VER}" \
   --fw-version "${FW_VER}" \
@@ -339,9 +394,24 @@ if [[ -n "${EXPORT_FILE}" ]]; then
      | .python_env.python_version = $pyv' \
     "${EXPORT_FILE}" > "${_tmp_ttis}"
   mv "${_tmp_ttis}" "${EXPORT_FILE}"
+
+  # The installer skipped a prerelease KMD, so record what was installed here.
+  if kmd_is_prerelease; then
+    if command -v dpkg-query >/dev/null 2>&1; then
+      _kmd_installed="$(dpkg-query -W -f='${Version}' tenstorrent-dkms)"
+    else
+      _kmd_installed="$(rpm -q --qf '%{VERSION}-%{RELEASE}' tenstorrent-dkms)"
+    fi
+    echo "Recording prerelease KMD ${_kmd_installed} in ${EXPORT_FILE}"
+    jq --arg v "${_kmd_installed}" '.tt_system["tenstorrent-dkms"] = $v' \
+      "${EXPORT_FILE}" > "${_tmp_ttis}"
+    mv "${_tmp_ttis}" "${EXPORT_FILE}"
+  fi
 fi
 
 if [[ "${HW}" -eq 1 ]]; then
+  ensure_kmd_loaded
+
   TT_METALIUM_WRAPPER="${HOME}/.local/bin/tt-metalium"
   if [[ -x "${TT_METALIUM_WRAPPER}" ]]; then
     grep -E '^METALIUM_IMAGE=' "${TT_METALIUM_WRAPPER}" | head -n1 | cut -d= -f2- | tr -d '"' \

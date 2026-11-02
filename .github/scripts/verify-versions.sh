@@ -75,7 +75,8 @@ echo "venv: ${VENV_DIR}"
 echo ""
 
 normalize_ver() {
-  sed -E 's/^v//; s/-[0-9].*$//; s/\+.*$//' <<<"$1"
+  # Packaged prereleases: deb 2.12.0~rc1 and rpm 2.12.0.rc1 both mean 2.12.0-rc1.
+  sed -E 's/^v//; s/[~.](rc[0-9]+)/-\1/; s/-[0-9].*$//; s/\+.*$//' <<<"$1"
 }
 
 versions_match() {
