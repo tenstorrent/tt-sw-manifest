@@ -129,7 +129,7 @@ resolve_board_profile() {
     *)
       if [[ -z "${METAL_TARGET}" ]]; then
         echo "FAIL: unknown runner label '${board}'." >&2
-        echo "  Set GOLDEN_RUNNER_LABEL to p100a|p150a|p300a|quietbox2|loudbox|bh-galaxy|bh-galaxy-revc," >&2
+        echo "  Set GOLDEN_RUNNER_LABEL to p100a|p150a|p300a|quietbox2|loudbox|bh-galaxy|bh-galaxy-revc|super_cluster_bh_node," >&2
         echo "  or export METAL_TARGET (and optionally METAL_UPSTREAM_IMAGE_REPO / HF_MODEL)." >&2
         return 1
       fi
@@ -230,6 +230,8 @@ case "${RUNNER_LABEL}" in
   loudbox* | *-loudbox*) BOARD=loudbox ;;
   # Before bh-galaxy*: bh-galaxy-revc is a prefix of that pattern.
   bh-galaxy-revc* | *-bh-galaxy-revc*) BOARD=bh-galaxy-revc ;;
+  # BH super cluster nodes are rev C Galaxies.
+  super_cluster_bh_node*) BOARD=bh-galaxy-revc ;;
   bh-galaxy* | *-bh-galaxy* | *galaxy*) BOARD=bh-galaxy ;;
 esac
 
