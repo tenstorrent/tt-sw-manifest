@@ -49,7 +49,7 @@ The same suite runs on every relevant PR, on Renovate bump PRs, on pushes to `ma
 
 6. **Metal upstream** — On the HW runners, run the syseng-style upstream suite (`metal-upstream.sh` / `upstream-tests-bh*`, host weights under `/opt/tenstorrent/hf-models`). Full logs are uploaded as `metal-upstream-<board>-output` artifacts.
 
-7. **SC4 cluster** — Once every BH super cluster node has passed items 2–6, the head node drives multi-host tests across all eight Galaxies (two 4-host SC4 quads) with tt-metal's exabox scripts over SSH + MPI, using the `golden.json` tt-metal release image (`upstream-tests-bh-glx:<metal-version>`). See [`golden-sc4-cluster.yml`](.github/workflows/golden-sc4-cluster.yml):
+7. **SC4 cluster** — The BH super cluster nodes run items 2–5 but not metal upstream (a single-host suite). Once every node has passed, the head node drives multi-host tests across all eight Galaxies (two 4-host SC4 quads) with tt-metal's exabox scripts over SSH + MPI, using the `golden.json` tt-metal release image (`upstream-tests-bh-glx:<metal-version>`). See [`golden-sc4-cluster.yml`](.github/workflows/golden-sc4-cluster.yml):
    - **Health** — no stray process holds a device, `tt-smi -glx_reset` on every host, physical discovery, system health.
    - **Validation** — `run_validation.sh` per quad against that quad's slice of the exabox FSD (`fsd-subset.py`), judged by `analyze_validation_results.py`.
    - **Fabric** — `run_fabric_tests.sh --config 4x32` per quad: 2D torus stability (`*_short`) and neighbor exchange.
@@ -59,7 +59,7 @@ The same suite runs on every relevant PR, on Renovate bump PRs, on pushes to `ma
 |----------|------|
 | `ubuntu-latest` (GitHub-hosted) | Distro container matrix (item 1) |
 | HW runners (self-hosted & shared with system FW) | Hardware suite (items 2–6) |
-| BH super cluster (`bh-glx-120-a0[2-5]u0[28]`, head node `a02u02`) | Hardware suite (items 2–6) per node, then SC4 cluster (item 7) |
+| BH super cluster (`bh-glx-120-a0[2-5]u0[28]`, head node `a02u02`) | Items 2–5 per node, then SC4 cluster (item 7) |
 
 ## Offline test (your hardware)
 
