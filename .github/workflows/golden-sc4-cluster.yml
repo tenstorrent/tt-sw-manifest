@@ -1,23 +1,39 @@
-# SC4 cluster tests on the BH super cluster, driven from the head node.
+# SC4 cluster tests on the BH super cluster, driven from the head node (PT-628).
 #
-# The head node (label super_cluster_head_node) is the "starter": it runs the
-# job and reaches the other hosts with passwordless SSH + mpirun, the way
-# tt-metal's tools/scaleout/exabox scripts expect (no Kubernetes). Tests run
-# from the exabox-tools image, so tt-metal is not built on the hosts.
+# Called by golden-hw.yml once every super cluster node has installed and
+# flashed the golden.json pins and passed its own tests; can also be dispatched
+# on its own.
 #
-# Brought up one step at a time (PT-628):
-#   0. Preflight: SSH, OpenMPI, Docker, image, scaleout descriptors
-#   1. SC4 health: physical discovery + system health               <- now
-#   2. Validation: run_validation.sh
-#   3. Fabric: run_fabric_tests.sh
+# The head node (label super_cluster_head_node) is the "starter": it runs this
+# job and drives the other hosts over passwordless SSH + mpirun, the way
+# tt-metal's tools/scaleout/exabox scripts expect (no Kubernetes). The tests run
+# from the golden.json tt-metal release (upstream-tests-bh-glx:<metal-version>),
+# which carries the test binaries and the matching exabox scripts.
+#
+# Stages, all on the eight hosts as two SC4 quads:
+#   1. Preflight   SSH, OpenMPI, Docker, image, descriptors
+#   2. Health      device holders, glx reset, physical discovery, system health
+#   3. Validation  run_validation.sh per quad (port down, reset, discovery vs the
+#                  quad's FSD, traffic), judged by analyze_validation_results.py
+#   4. Fabric      run_fabric_tests.sh --config 4x32 per quad: 2D torus stability
+#                  (*_short) and the neighbor-exchange DC validation
+#   5. Recover     always: remove leftover containers, glx reset every host
 name: Golden — SC4 cluster
 run-name: SC4 cluster · ${{ github.event_name }}
 
 on:
-  push:
-    branches:
-      - sc4-cluster-tests
+  workflow_call:
+    inputs:
+      validation_iterations:
+        description: run_validation.sh iterations per quad
+        type: number
+        default: 3
   workflow_dispatch:
+    inputs:
+      validation_iterations:
+        description: run_validation.sh iterations per quad
+        type: number
+        default: 3
 
 concurrency:
   group: golden-sc4-cluster
@@ -27,67 +43,77 @@ permissions:
   contents: read
 
 env:
-  # All eight nodes. Which four form each SC4 quad comes out of preflight
-  # (deployment descriptor) and physical discovery.
-  SC4_HOSTS: bh-glx-120-a02u02,bh-glx-120-a02u08,bh-glx-120-a03u02,bh-glx-120-a03u08,bh-glx-120-a04u02,bh-glx-120-a04u08,bh-glx-120-a05u02,bh-glx-120-a05u08
-  EXABOX_IMAGE: ghcr.io/tenstorrent/tt-metal/exabox-tools:latest
+  # Each quad in physical ring order (from the exabox FSD). The u08 hosts are
+  # also cabled to the other quad and to hosts outside this cluster; those
+  # links are not part of either quad's FSD.
+  SC4_QUADS: >-
+    A=bh-glx-120-a02u02,bh-glx-120-a02u08,bh-glx-120-a03u08,bh-glx-120-a03u02
+    B=bh-glx-120-a04u02,bh-glx-120-a04u08,bh-glx-120-a05u08,bh-glx-120-a05u02
+  # The provisioner's exabox FSD; each quad's FSD is cut from it.
+  SC4_FSD: /data/scaleout_configs/tt-cluster-config-sources/exabox-latest-main/factory_system_descriptor.textproto
 
 jobs:
-  preflight:
-    name: SC4 preflight
+  sc4:
+    name: SC4 cluster (health, validation, fabric)
     runs-on: [self-hosted, super_cluster_head_node]
-    timeout-minutes: 60
+    # Typical run: ~35 min (health 2, validation 8, fabric 21). The per-step
+    # timeouts below leave room for link retrains.
+    timeout-minutes: 150
     steps:
       # The golden hw workflows share this workspace and leave root-owned
-      # reset artifacts that checkout cannot delete.
-      - name: Remove root-owned reset artifacts
-        run: sudo rm -rf "${GITHUB_WORKSPACE}/nvme-reset-check"
+      # files that checkout cannot delete.
+      - name: Remove root-owned artifacts
+        run: sudo rm -rf "${GITHUB_WORKSPACE}/nvme-reset-check" "${GITHUB_WORKSPACE}/platform-fw"
 
       - name: Checkout golden versions repo
         uses: actions/checkout@v4
 
-      - name: Preflight (SSH, OpenMPI, Docker, image, descriptors)
-        run: bash .github/scripts/sc4-preflight.sh
-
-  health:
-    name: SC4 health (physical discovery + system health)
-    needs: preflight
-    runs-on: [self-hosted, super_cluster_head_node]
-    timeout-minutes: 60
-    steps:
-      - name: Remove root-owned reset artifacts
-        run: sudo rm -rf "${GITHUB_WORKSPACE}/nvme-reset-check"
-
-      - name: Checkout golden versions repo
-        uses: actions/checkout@v4
-
-      # Use the exabox scripts from the same tt-metal commit as the image.
-      - name: Resolve the image's tt-metal revision
+      # Same tag rule as metal-upstream.sh: metal-upstream-tag, else metal-version.
+      - name: Pick the tt-metal release image from golden.json
         id: image
         run: |
-          docker pull -q "${EXABOX_IMAGE}"
-          rev=$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "${EXABOX_IMAGE}")
-          echo "tt-metal revision: ${rev}"
-          echo "rev=${rev}" >> "$GITHUB_OUTPUT"
+          tag=$(python3 -c 'import json; g = json.load(open("golden.json")); t = g.get("metal-upstream-tag") or g["metal-version"]; print(t if t.startswith(("v", "latest")) else "v" + t)')
+          echo "EXABOX_IMAGE=ghcr.io/tenstorrent/tt-metal/upstream-tests-bh-glx:${tag}" | tee -a "${GITHUB_ENV}"
 
-      - name: Checkout tt-metal exabox scripts
-        uses: actions/checkout@v4
-        with:
-          repository: tenstorrent/tt-metal
-          ref: ${{ steps.image.outputs.rev }}
-          path: tt-metal
-          sparse-checkout: tools/scaleout/exabox
+      - name: Preflight (SSH, OpenMPI, Docker, image, descriptors)
+        timeout-minutes: 40
+        run: bash .github/scripts/sc4-preflight.sh
 
-      - name: Reset, physical discovery, system health
-        working-directory: tt-metal
+      - name: Health (holders, reset, physical discovery, system health)
+        id: health
+        timeout-minutes: 30
         env:
           SC4_LOG_DIR: ${{ github.workspace }}/sc4-logs/health
-        run: bash "${GITHUB_WORKSPACE}/.github/scripts/sc4-health.sh"
+        run: bash .github/scripts/sc4-health.sh
 
-      - name: Upload health logs
+      - name: Validation (run_validation.sh per quad)
+        if: ${{ !cancelled() && steps.health.outcome == 'success' }}
+        timeout-minutes: 55
+        env:
+          SC4_LOG_DIR: ${{ github.workspace }}/sc4-logs/validation
+          VALIDATION_ITERATIONS: ${{ inputs.validation_iterations }}
+          VALIDATION_TIMEOUT_MIN: "25"
+        run: bash .github/scripts/sc4-validation.sh
+
+      - name: Fabric (run_fabric_tests.sh 4x32 per quad)
+        if: ${{ !cancelled() && steps.health.outcome == 'success' }}
+        timeout-minutes: 75
+        env:
+          SC4_LOG_DIR: ${{ github.workspace }}/sc4-logs/fabric
+          FABRIC_TIMEOUT_MIN: "20"
+        run: bash .github/scripts/sc4-fabric.sh
+
+      - name: Recover (remove leftover containers, glx reset)
+        if: ${{ always() && steps.image.outcome == 'success' }}
+        timeout-minutes: 15
+        env:
+          SC4_LOG_DIR: ${{ github.workspace }}/sc4-logs/recover
+        run: bash .github/scripts/sc4-recover.sh
+
+      - name: Upload SC4 logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sc4-health-logs
-          path: ${{ github.workspace }}/sc4-logs/health
+          name: sc4-logs
+          path: ${{ github.workspace }}/sc4-logs
           if-no-files-found: warn
