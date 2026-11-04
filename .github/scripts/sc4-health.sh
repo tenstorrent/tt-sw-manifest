@@ -19,6 +19,7 @@ SC4_HOSTS="${SC4_HOSTS:?}"
 EXABOX_IMAGE="${EXABOX_IMAGE:?}"
 SC4_LOG_DIR="${SC4_LOG_DIR:-$(pwd)/sc4-logs}"
 MIN_CONNECTIONS="${MIN_CONNECTIONS:-2}"
+TEST_TIMEOUT_MIN="${TEST_TIMEOUT_MIN:-20}"
 EXABOX=tools/scaleout/exabox
 NHOSTS=$(tr ',' '\n' <<< "${SC4_HOSTS}" | grep -c .)
 mkdir -p "${SC4_LOG_DIR}"
@@ -51,6 +52,26 @@ for launcher in mpirun mpirun-ulfm; do
   echo "[${launcher}] exit ${PIPESTATUS[0]}"
 done
 
+echo "=== Device holders and hugepages on every host ==="
+# A process that keeps /dev/tenstorrent/* open (a pod, a stale container, an
+# old test) makes the tests wait on the KMD lock forever.
+HOLDERS='h=$(hostname); p=$(sudo fuser /dev/tenstorrent/* 2>/dev/null | tr -s " " "\n" | grep -E "^[0-9]+$" | sort -u | paste -sd" " -);
+hp=$(awk "/HugePages_Total/ {print \$2}" /proc/meminfo);
+if [ -n "$p" ]; then echo "[$h] HELD by: $(ps -o pid=,user=,etime=,cmd= -p "${p// /,}" | cut -c1-150 | tr "\n" ";")"; fi;
+echo "HOLD_RESULT|$h|${p:-none}|hugepages=${hp}"'
+mpirun --host "${SC4_HOSTS}" -np "${NHOSTS}" --mca btl_tcp_if_include "${MPI_IF}" \
+  bash -c "${HOLDERS}" 2>&1 | tee "${SC4_LOG_DIR}/device_holders.log"
+held=$(grep -E '^HOLD_RESULT\|' "${SC4_LOG_DIR}/device_holders.log" | awk -F'|' '$3 != "none" {print $2}' | paste -sd, -)
+nohp=$(grep -E '^HOLD_RESULT\|' "${SC4_LOG_DIR}/device_holders.log" | awk -F'|' '$4 == "hugepages=0" {print $2}' | paste -sd, -)
+if [[ -n "${held}" ]]; then
+  record FAIL "free devices" "in use on: ${held} (see device_holders.log)"
+  echo; printf '%s\n' "${RESULTS[@]}"
+  echo "ERROR: another process holds Tenstorrent devices on ${held}; not starting tests." >&2
+  exit 1
+fi
+record PASS "free devices" "no other process has /dev/tenstorrent open"
+[[ -n "${nohp}" ]] && record WARN "hugepages" "none reserved on: ${nohp}"
+
 echo "=== tt-smi -glx_reset on every host ==="
 # Hosts may have tt-smi on the user's PATH or only in the root venv the golden
 # install creates; use whichever exists.
@@ -69,14 +90,16 @@ fi
 
 run_test() { # run_test <name> <binary> [args...]
   local name="$1"; shift
-  echo; echo "=== ${name} ==="
-  "${EXABOX}/mpi-docker" --image "${EXABOX_IMAGE}" --empty-entrypoint --tag-host \
+  echo; echo "=== ${name} (timeout ${TEST_TIMEOUT_MIN}m) ==="
+  timeout --kill-after=60 "${TEST_TIMEOUT_MIN}m" "${EXABOX}/mpi-docker" --image "${EXABOX_IMAGE}" --empty-entrypoint --tag-host \
     --mpi-interface "${MPI_IF}" --volume /data/scaleout_configs \
     --host "${SC4_HOSTS}" -np "${NHOSTS}" \
     "$@" 2>&1 | tee "${SC4_LOG_DIR}/${name}.log"
   local ec=${PIPESTATUS[0]}
   if [[ "${ec}" -eq 0 ]]; then
     record PASS "${name}" "exit 0"
+  elif [[ "${ec}" -eq 124 || "${ec}" -eq 137 ]]; then
+    record FAIL "${name}" "timed out after ${TEST_TIMEOUT_MIN}m (a host stalled; see ${name}.log)"
   else
     record FAIL "${name}" "exit ${ec} (see ${name}.log)"
   fi
