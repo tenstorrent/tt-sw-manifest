@@ -21,6 +21,16 @@
 #                  portability. Mutually exclusive with --hw and --ttis.
 set -euo pipefail
 
+# apt verifies repo signatures as the unprivileged _apt user, so the key and
+# source list that tt-installer writes must be world-readable. Some hosts (the
+# BH super cluster nodes) default to umask 027, which leaves them 0640 and makes
+# apt fail with "Unknown error executing apt-key". curl -o keeps an existing
+# file's mode, so also repair files left behind by an earlier run.
+umask 022
+for f in /etc/apt/keyrings/tt-pkg-key.asc /etc/apt/sources.list.d/tenstorrent.list; do
+  [[ -e "${f}" ]] && chmod 644 "${f}" 2>/dev/null || true
+done
+
 GOLDEN_JSON="${GOLDEN_JSON:-/workspace/golden.json}"
 INSTALLER_URL="${INSTALLER_URL:-}"
 # Release source for install.sh / ttis.sh. Defaults to the upstream repo and the
