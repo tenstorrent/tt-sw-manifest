@@ -57,7 +57,11 @@ echo "=== Device holders and hugepages on every host ==="
 # old test) makes the tests wait on the KMD lock forever.
 HOLDERS='h=$(hostname); p=$(sudo fuser /dev/tenstorrent/* 2>/dev/null | tr -s " " "\n" | grep -E "^[0-9]+$" | sort -u | paste -sd" " -);
 hp=$(awk "/HugePages_Total/ {print \$2}" /proc/meminfo);
-if [ -n "$p" ]; then echo "[$h] HELD by: $(ps -o pid=,user=,etime=,cmd= -p "${p// /,}" | cut -c1-150 | tr "\n" ";")"; fi;
+if [ -n "$p" ]; then
+  echo "[$h] HELD by: $(sudo ps -o pid=,ppid=,user=,lstart=,etime=,cmd= -p "${p// /,}" | cut -c1-200 | tr "\n" ";")";
+  sudo fuser -v /dev/tenstorrent/* 2>&1 | sed "s/^/[$h] fuser: /";
+  for q in $p; do echo "[$h] cgroup $q: $(sudo cat /proc/$q/cgroup 2>/dev/null | tr "\n" " ")"; done;
+fi;
 echo "HOLD_RESULT|$h|${p:-none}|hugepages=${hp}"'
 mpirun --host "${SC4_HOSTS}" -np "${NHOSTS}" --mca btl_tcp_if_include "${MPI_IF}" \
   bash -c "${HOLDERS}" 2>&1 | tee "${SC4_LOG_DIR}/device_holders.log"
