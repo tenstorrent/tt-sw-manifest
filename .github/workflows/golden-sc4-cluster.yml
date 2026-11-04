@@ -6,8 +6,8 @@
 # from the exabox-tools image, so tt-metal is not built on the hosts.
 #
 # Brought up one step at a time (PT-628):
-#   0. Preflight: SSH, OpenMPI, Docker, image, scaleout descriptors   <- now
-#   1. SC4 health: physical discovery + system health
+#   0. Preflight: SSH, OpenMPI, Docker, image, scaleout descriptors
+#   1. SC4 health: physical discovery + system health               <- now
 #   2. Validation: run_validation.sh
 #   3. Fabric: run_fabric_tests.sh
 name: Golden — SC4 cluster
@@ -48,3 +48,46 @@ jobs:
 
       - name: Preflight (SSH, OpenMPI, Docker, image, descriptors)
         run: bash .github/scripts/sc4-preflight.sh
+
+  health:
+    name: SC4 health (physical discovery + system health)
+    needs: preflight
+    runs-on: [self-hosted, super_cluster_head_node]
+    timeout-minutes: 60
+    steps:
+      - name: Remove root-owned reset artifacts
+        run: sudo rm -rf "${GITHUB_WORKSPACE}/nvme-reset-check"
+
+      - name: Checkout golden versions repo
+        uses: actions/checkout@v4
+
+      # Use the exabox scripts from the same tt-metal commit as the image.
+      - name: Resolve the image's tt-metal revision
+        id: image
+        run: |
+          docker pull -q "${EXABOX_IMAGE}"
+          rev=$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "${EXABOX_IMAGE}")
+          echo "tt-metal revision: ${rev}"
+          echo "rev=${rev}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tt-metal exabox scripts
+        uses: actions/checkout@v4
+        with:
+          repository: tenstorrent/tt-metal
+          ref: ${{ steps.image.outputs.rev }}
+          path: tt-metal
+          sparse-checkout: tools/scaleout/exabox
+
+      - name: Reset, physical discovery, system health
+        working-directory: tt-metal
+        env:
+          SC4_LOG_DIR: ${{ github.workspace }}/sc4-logs/health
+        run: bash "${GITHUB_WORKSPACE}/.github/scripts/sc4-health.sh"
+
+      - name: Upload health logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sc4-health-logs
+          path: ${{ github.workspace }}/sc4-logs/health
+          if-no-files-found: warn
