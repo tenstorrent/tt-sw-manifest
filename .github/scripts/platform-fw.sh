@@ -23,6 +23,9 @@
 #   VENV_DIR         venv holding tt-smi (default /root/.tenstorrent-venv)
 #   BMC_USER, BMC_PASSWORD  optional, for Redfish
 set -uo pipefail
+# Runs under sudo; some hosts default to umask 027, which would leave the record
+# unreadable to the runner user that uploads it.
+umask 022
 
 HOST="$(hostname)"
 OUT="${PLATFORM_FW_OUT:-$(pwd)/platform-fw-${HOST}.txt}"
