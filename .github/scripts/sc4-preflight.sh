@@ -8,12 +8,17 @@
 # them all and the script exits non-zero if any required check failed.
 #
 # Env:
+#   SC4_QUADS           the quads, "name=h1,h2,h3,h4 ..." (see sc4-common.sh), or
 #   SC4_HOSTS           comma-separated hosts to check (the starter included)
 #   EXABOX_IMAGE        image the exabox scripts run (default exabox-tools:latest)
 #   SCALEOUT_CONFIGS    descriptor directory (default /data/scaleout_configs)
+#   SC4_FSD             factory system descriptor the per-quad FSDs are cut from
 set -uo pipefail
 
-SC4_HOSTS="${SC4_HOSTS:?set SC4_HOSTS to a comma-separated host list}"
+if [[ -z "${SC4_HOSTS:-}" && -n "${SC4_QUADS:-}" ]]; then
+  SC4_HOSTS="$(tr ' ' '\n' <<< "${SC4_QUADS}" | sed 's/^[^=]*=//' | grep . | paste -sd, -)"
+fi
+SC4_HOSTS="${SC4_HOSTS:?set SC4_QUADS or SC4_HOSTS}"
 EXABOX_IMAGE="${EXABOX_IMAGE:-ghcr.io/tenstorrent/tt-metal/exabox-tools:latest}"
 SCALEOUT_CONFIGS="${SCALEOUT_CONFIGS:-/data/scaleout_configs}"
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
@@ -102,6 +107,13 @@ if [[ -d "${SCALEOUT_CONFIGS}" ]]; then
   done
 else
   record FAIL "scaleout configs dir" "${SCALEOUT_CONFIGS} missing on starter"
+fi
+if [[ -n "${SC4_FSD:-}" ]]; then
+  if [[ -r "${SC4_FSD}" ]]; then
+    record PASS "factory system descriptor" "${SC4_FSD} ($(grep -c '^hosts {' "${SC4_FSD}") hosts)"
+  else
+    record FAIL "factory system descriptor" "${SC4_FSD} not readable"
+  fi
 fi
 for h in "${HOSTS[@]}"; do
   [[ "${h}" == "$(hostname)" ]] && continue
