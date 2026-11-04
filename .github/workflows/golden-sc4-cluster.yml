@@ -17,9 +17,6 @@ on:
   push:
     branches:
       - sc4-cluster-tests
-    paths:
-      - .github/workflows/golden-sc4-cluster.yml
-      - .github/scripts/sc4-*.sh
   workflow_dispatch:
 
 concurrency:
