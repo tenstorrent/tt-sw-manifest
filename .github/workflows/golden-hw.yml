@@ -148,6 +148,13 @@ jobs:
           PLATFORM_FW_OUT: ${{ github.workspace }}/platform-fw/platform-fw-${{ matrix.runner }}.txt
         run: sudo -E env VENV_DIR="${VENV_DIR}" PLATFORM_FW_OUT="${PLATFORM_FW_OUT}" GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY}" bash .github/scripts/platform-fw.sh
 
+      - name: Return platform firmware record to the runner user
+        if: always()
+        run: |
+          if [[ -e "${GITHUB_WORKSPACE}/platform-fw" ]]; then
+            sudo chown -R "$(id -u):$(id -g)" "${GITHUB_WORKSPACE}/platform-fw"
+          fi
+
       - name: Upload platform firmware record
         if: always()
         uses: actions/upload-artifact@v4
