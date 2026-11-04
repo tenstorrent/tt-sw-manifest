@@ -31,14 +31,25 @@ record() {
   return 0
 }
 
-# shellcheck source=/dev/null
-source "${EXABOX}/utils/mpi_if_selection.sh"
+# Pick the interface the kernel routes to a peer over. tt-metal's
+# validate_mpi_interface rejected every interface on these hosts and hides why,
+# so test it here with the output visible.
+PEER=$(tr ',' '\n' <<< "${SC4_HOSTS}" | grep -vx "$(hostname)" | head -1)
+PEER_IP=$(getent hosts "${PEER}" | awk '{print $1; exit}')
 if [[ -z "${MPI_IF:-}" ]]; then
-  PEER=$(tr ',' '\n' <<< "${SC4_HOSTS}" | grep -vx "$(hostname)" | head -1)
-  MPI_IF=$(validate_mpi_interface "" false "${PEER}")
+  MPI_IF=$(ip route get "${PEER_IP}" | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1)
 fi
 [[ -n "${MPI_IF}" ]] || { echo "ERROR: could not pick an MPI interface" >&2; exit 1; }
-echo "MPI interface: ${MPI_IF}   hosts (${NHOSTS}): ${SC4_HOSTS}"
+echo "MPI interface: ${MPI_IF} (route to ${PEER} ${PEER_IP})   hosts (${NHOSTS}): ${SC4_HOSTS}"
+ip -br addr show "${MPI_IF}" || true
+echo "--- mpirun reachability test over ${MPI_IF} ---"
+for launcher in mpirun mpirun-ulfm; do
+  command -v "${launcher}" >/dev/null || continue
+  echo "[${launcher}] $(command -v "${launcher}")"
+  timeout 60 "${launcher}" --host "${PEER}" --mca oob_tcp_if_include "${MPI_IF}" \
+    --mca btl_tcp_if_include "${MPI_IF}" -np 1 hostname 2>&1 | tail -15
+  echo "[${launcher}] exit ${PIPESTATUS[0]}"
+done
 
 echo "=== tt-smi -glx_reset on every host ==="
 # Hosts may have tt-smi on the user's PATH or only in the root venv the golden
