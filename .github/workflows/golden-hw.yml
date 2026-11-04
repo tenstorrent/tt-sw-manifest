@@ -10,19 +10,20 @@ name: Golden — hardware
 run-name: Golden hw · ${{ github.event_name }}
 
 on:
-  push:
-    branches:
-      - main
-      - renovate/**
-  pull_request:
-    paths:
-      - golden.json
-      - .github/workflows/golden-ttis.yml
-      - .github/workflows/golden-hw.yml
-      - .github/workflows/golden-release.yml
-      - .github/workflows/renovate.yml
-      - .github/scripts/**
-      - tests/metalium-workload.py
+  # Disabled on sc4-cluster-tests: only the SC4 cluster tests run here.
+  # push:
+  #   branches:
+  #     - main
+  #     - renovate/**
+  # pull_request:
+  #   paths:
+  #     - golden.json
+  #     - .github/workflows/golden-ttis.yml
+  #     - .github/workflows/golden-hw.yml
+  #     - .github/workflows/golden-release.yml
+  #     - .github/workflows/renovate.yml
+  #     - .github/scripts/**
+  #     - tests/metalium-workload.py
   workflow_dispatch:
     inputs:
       reason:
