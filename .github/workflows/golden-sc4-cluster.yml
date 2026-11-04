@@ -1,0 +1,53 @@
+# SC4 cluster tests on the BH super cluster, driven from the head node.
+#
+# The head node (label super_cluster_head_node) is the "starter": it runs the
+# job and reaches the other hosts with passwordless SSH + mpirun, the way
+# tt-metal's tools/scaleout/exabox scripts expect (no Kubernetes). Tests run
+# from the exabox-tools image, so tt-metal is not built on the hosts.
+#
+# Brought up one step at a time (PT-628):
+#   0. Preflight: SSH, OpenMPI, Docker, image, scaleout descriptors   <- now
+#   1. SC4 health: physical discovery + system health
+#   2. Validation: run_validation.sh
+#   3. Fabric: run_fabric_tests.sh
+name: Golden — SC4 cluster
+run-name: SC4 cluster · ${{ github.event_name }}
+
+on:
+  push:
+    branches:
+      - sc4-cluster-tests
+    paths:
+      - .github/workflows/golden-sc4-cluster.yml
+      - .github/scripts/sc4-*.sh
+  workflow_dispatch:
+
+concurrency:
+  group: golden-sc4-cluster
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # All eight nodes. Which four form each SC4 quad comes out of preflight
+  # (deployment descriptor) and physical discovery.
+  SC4_HOSTS: bh-glx-120-a02u02,bh-glx-120-a02u08,bh-glx-120-a03u02,bh-glx-120-a03u08,bh-glx-120-a04u02,bh-glx-120-a04u08,bh-glx-120-a05u02,bh-glx-120-a05u08
+  EXABOX_IMAGE: ghcr.io/tenstorrent/tt-metal/exabox-tools:latest
+
+jobs:
+  preflight:
+    name: SC4 preflight
+    runs-on: [self-hosted, super_cluster_head_node]
+    timeout-minutes: 60
+    steps:
+      # The golden hw workflows share this workspace and leave root-owned
+      # reset artifacts that checkout cannot delete.
+      - name: Remove root-owned reset artifacts
+        run: sudo rm -rf "${GITHUB_WORKSPACE}/nvme-reset-check"
+
+      - name: Checkout golden versions repo
+        uses: actions/checkout@v4
+
+      - name: Preflight (SSH, OpenMPI, Docker, image, descriptors)
+        run: bash .github/scripts/sc4-preflight.sh
