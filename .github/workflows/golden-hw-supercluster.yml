@@ -83,6 +83,15 @@ jobs:
       - name: Checkout golden versions repo
         uses: actions/checkout@v4
 
+      # These hosts default to umask 027. A tt-installer run there leaves its
+      # apt key and source list 0640, which _apt cannot read, and every later
+      # apt-get update fails with "Unknown error executing apt-key".
+      - name: Make the Tenstorrent apt key readable
+        run: |
+          for f in /etc/apt/keyrings/tt-pkg-key.asc /etc/apt/sources.list.d/tenstorrent.list; do
+            if sudo test -e "${f}"; then sudo chmod 644 "${f}"; fi
+          done
+
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
