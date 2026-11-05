@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Record the platform firmware on this host: BMC, BIOS, CPLDs, retimers and the
+# Record the platform firmware on this host: BMC, BIOS, CPLDs and the
 # Tenstorrent chip firmware. Read-only, and never fails the job: a value that
 # cannot be read is recorded as "n/a" with the reason.
 #
@@ -8,20 +8,19 @@
 # step summary.
 #
 # Sources:
-#   BMC            ipmitool mc info (firmware revision + aux bytes)
+#   BMC            ipmitool mc info. The version is the firmware revision plus
+#                  the first aux byte as the build: fw rev 0.05 + aux 0x23 is
+#                  BMC 5.23 (a major of 0 is dropped, the minor loses its
+#                  leading zero, and the aux byte is read as written)
 #   BIOS           dmidecode
 #   CPLDs          BH Galaxy (Quanta S7T-MB) only: the same read-only IPMI I2C
 #                  register reads as the vendor's cpld-dump.sh (tt-syseng-diag):
 #                  ipmitool raw 0x06 0x52 <bus> <addr> 0x04 0x00
 #   Chip firmware  tt-smi -s (fw bundle, CM, ETH, GDDR), unique values per host
-#   Retimers       PCIe and ETH retimer firmware is not visible in-band. When
-#                  BMC_USER and BMC_PASSWORD are set, the BMC's Redfish
-#                  FirmwareInventory is listed instead, which carries them.
 #
 # Env:
 #   PLATFORM_FW_OUT  output file (default ./platform-fw-$(hostname).txt)
 #   VENV_DIR         venv holding tt-smi (default /root/.tenstorrent-venv)
-#   BMC_USER, BMC_PASSWORD  optional, for Redfish
 set -uo pipefail
 # Runs under sudo; some hosts default to umask 027, which would leave the record
 # unreadable to the runner user that uploads it.
@@ -52,13 +51,19 @@ put system.product "$(dmidecode -s system-product-name 2>/dev/null || echo n/a)"
 # --- BMC and BIOS ------------------------------------------------------------
 if command -v ipmitool >/dev/null && mc="$(timeout 60 ipmitool mc info 2>/dev/null)"; then
   rev="$(sed -n 's/^Firmware Revision *: *//p' <<< "${mc}")"
-  aux="$(sed -n '/^Aux Firmware Rev Info/,$p' <<< "${mc}" | grep -oE '0x[0-9a-fA-F]{2}' | paste -sd. -)"
-  put bmc.firmware "${rev}${aux:+ (aux ${aux})}"
+  aux="$(sed -n '/^Aux Firmware Rev Info/,$p' <<< "${mc}" | grep -oE '0x[0-9a-fA-F]{2}' | head -1)"
+  major="${rev%%.*}" minor="${rev#*.}"
+  ver="$(( 10#${minor:-0} ))${aux:+.${aux#0x}}"
+  [[ "${major}" =~ ^0*$ ]] || ver="$(( 10#${major} )).${ver}"
+  put bmc.firmware "${ver} (fw rev ${rev}${aux:+, aux ${aux}})"
+  echo "=================================================="
+  echo "  BMC version on ${HOST}: ${ver}"
+  echo "  (ipmitool mc info: firmware revision ${rev}, aux ${aux:-none})"
+  echo "=================================================="
+  [[ -n "${GITHUB_ACTIONS:-}" ]] && echo "::notice title=BMC version (${HOST})::${ver}"
   put bmc.manufacturer "$(sed -n 's/^Manufacturer Name *: *//p' <<< "${mc}")"
-  BMC_IP="$(timeout 30 ipmitool lan print 1 2>/dev/null | sed -n 's/^IP Address *: *//p' | head -1)"
 else
   put bmc.firmware "n/a (ipmitool mc info failed)"
-  BMC_IP=""
 fi
 put bios.version "$(dmidecode -s bios-version 2>/dev/null || echo n/a)"
 put bios.date "$(dmidecode -s bios-release-date 2>/dev/null || echo n/a)"
@@ -99,28 +104,6 @@ else
   put chips "n/a (tt-smi -s failed)"
 fi
 rm -f "${snap}"
-
-# --- Retimers -----------------------------------------------------------------
-redfish() { # redfish <path>: GET from the BMC; credentials go on stdin, not argv
-  printf 'user = "%s:%s"\n' "${BMC_USER}" "${BMC_PASSWORD}" |
-    timeout 60 curl -fsSk -K - "https://${BMC_IP}$1"
-}
-if [[ -n "${BMC_USER:-}" && -n "${BMC_PASSWORD:-}" && -n "${BMC_IP}" ]]; then
-  if inv="$(redfish /redfish/v1/UpdateService/FirmwareInventory)"; then
-    for id in $(python3 -c 'import json,sys; [print(m["@odata.id"]) for m in json.load(sys.stdin).get("Members", [])]' <<< "${inv}"); do
-      redfish "${id}" | python3 -c '
-import json, sys
-m = json.load(sys.stdin)
-print(f"FW|redfish.{m.get(\"Id\") or m.get(\"Name\")}|{m.get(\"Version\", \"n/a\")}")' | tee -a "${OUT}" ||
-        put "redfish.${id##*/}" "n/a (request failed)"
-    done
-  else
-    put redfish "n/a (Redfish FirmwareInventory request to the BMC at ${BMC_IP} failed)"
-  fi
-else
-  put retimer.pcie "n/a (not readable in-band; set BMC_USER/BMC_PASSWORD for Redfish)"
-  put retimer.eth "n/a (not readable in-band; set BMC_USER/BMC_PASSWORD for Redfish)"
-fi
 
 {
   echo "### Platform firmware on ${HOST}"
