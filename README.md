@@ -51,7 +51,7 @@ The same suite runs on every relevant PR, on Renovate bump PRs, on pushes to `ma
 
 7. **SC4 cluster** — The BH super cluster nodes run items 2–5 but not metal upstream (a single-host suite). As soon as every super cluster node has passed (without waiting for the single-host machines), the head node drives multi-host tests across all eight Galaxies (two 4-host SC4 quads) with tt-metal's exabox scripts over SSH + MPI, using the `golden.json` tt-metal release image (`upstream-tests-bh-glx:<metal-version>`). See [`golden-sc4-cluster.yml`](.github/workflows/golden-sc4-cluster.yml):
    - **Health** — no stray process holds a device, `tt-smi -glx_reset` on every host, physical discovery, system health.
-   - **Validation** — `run_validation.sh` per quad against that quad's slice of the exabox FSD (`fsd-subset.py`), judged by `analyze_validation_results.py`.
+   - **Validation** — `run_validation.sh` per quad against that quad's factory system descriptor, judged by `analyze_validation_results.py`. The cluster is cabled as two standalone quads (4+4) and the provisioner's exabox FSD does not have that cabling yet, so each quad's FSD is committed under [`.github/sc4/`](.github/sc4/). It was built from the cabling validation discovered (`fsd-from-discovery.py`). After a recabling, regenerate it from a validation log: `fsd-from-discovery.py <old-quad-fsd> <validation.log> .github/sc4/fsd-quad-<name>.textproto`.
    - **Fabric** — `run_fabric_tests.sh --config 4x32` per quad: 2D torus stability (`*_short`) and neighbor exchange.
    - **Recover** — always: remove leftover test containers and reset every host.
 

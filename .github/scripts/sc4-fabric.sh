@@ -50,7 +50,7 @@ run_fabric() { # run_fabric <quad> <hosts> <fsd> <name> [run_fabric_tests args..
 
 for q in "${QUAD_NAMES[@]}"; do
   if ! fsd=$(stage_quad_fsd "${q}"); then
-    record FAIL "fabric quad ${q}" "could not stage the quad FSD from ${SC4_FSD}"
+    record FAIL "fabric quad ${q}" "could not stage the quad FSD from $(quad_fsd_source "${q}")"
     continue
   fi
   ring=$(python3 tools/scaleout/exabox/resolve_host_ring_order.py --hosts "${QUAD_HOSTS[$q]}" --fsd "${fsd}" |

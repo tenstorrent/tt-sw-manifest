@@ -30,6 +30,7 @@ on:
       - .github/workflows/golden-release.yml
       - .github/workflows/renovate.yml
       - .github/scripts/**
+      - .github/sc4/**
       - tests/metalium-workload.py
   workflow_dispatch:
     inputs:

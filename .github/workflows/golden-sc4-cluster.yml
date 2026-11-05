@@ -43,13 +43,15 @@ permissions:
   contents: read
 
 env:
-  # Each quad in physical ring order (from the exabox FSD). The u08 hosts are
-  # also cabled to the other quad and to hosts outside this cluster; those
-  # links are not part of either quad's FSD.
+  # Each quad in physical ring order. Since 2026-11-04 the cluster is cabled as
+  # two standalone quads (4+4), with no links between them.
   SC4_QUADS: >-
     A=bh-glx-120-a02u02,bh-glx-120-a02u08,bh-glx-120-a03u08,bh-glx-120-a03u02
     B=bh-glx-120-a04u02,bh-glx-120-a04u08,bh-glx-120-a05u08,bh-glx-120-a05u02
-  # The provisioner's exabox FSD; each quad's FSD is cut from it.
+  # Each quad's FSD is the committed .github/sc4/fsd-quad-<name>.textproto,
+  # built from the discovered 4+4 cabling (fsd-from-discovery.py), because the
+  # provisioner's exabox FSD still has the old 8-host cabling. A quad without a
+  # committed file falls back to this exabox FSD, cut to its hosts.
   SC4_FSD: /data/scaleout_configs/tt-cluster-config-sources/exabox-latest-main/factory_system_descriptor.textproto
 
 jobs:
