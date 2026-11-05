@@ -108,6 +108,10 @@ if [[ -d "${SCALEOUT_CONFIGS}" ]]; then
 else
   record FAIL "scaleout configs dir" "${SCALEOUT_CONFIGS} missing on starter"
 fi
+for f in "$(dirname "${BASH_SOURCE[0]}")"/../sc4/fsd-quad-*.textproto; do
+  [[ -e "${f}" ]] || continue
+  record PASS "committed quad FSD" "$(basename "${f}"): $(sed -n 's/^ *hostname: *"\([^"]*\)".*/\1/p' "${f}" | paste -sd, -), $(grep -c '^ *connection {' "${f}") connections"
+done
 if [[ -n "${SC4_FSD:-}" ]]; then
   if [[ -r "${SC4_FSD}" ]]; then
     record PASS "factory system descriptor" "${SC4_FSD} ($(grep -c '^hosts {' "${SC4_FSD}") hosts)"

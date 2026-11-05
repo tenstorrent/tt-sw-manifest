@@ -3,9 +3,10 @@
 #
 # Each iteration brings the cross-host Ethernet ports down, runs
 # tt-smi -glx_reset on every host, discovers the topology, compares it with the
-# quad's FSD and sends traffic over every link. The FSD is the provisioner's
-# exabox FSD cut down to the quad's four hosts (fsd-subset.py), since the full
-# one lists 200+ hosts that are not in the run.
+# quad's FSD and sends traffic over every link. The FSD is the committed
+# .github/sc4/fsd-quad-<name>.textproto when there is one (the provisioner's
+# exabox FSD does not have the current 4+4 cabling; see fsd-from-discovery.py),
+# else the exabox FSD cut down to the quad's four hosts (fsd-subset.py).
 #
 # run_validation.sh exits 0 even when an iteration fails, so the verdict comes
 # from tt-metal's analyze_validation_results.py: exit 0 means at least 80% of the
@@ -36,7 +37,7 @@ for q in "${QUAD_NAMES[@]}"; do
   out="${SC4_SCRATCH}/validation-quad-${q}"
   echo; echo "=== Validation, quad ${q} (${hosts}), ${VALIDATION_ITERATIONS} iterations ==="
   if ! fsd=$(stage_quad_fsd "${q}"); then
-    record FAIL "validation quad ${q}" "could not stage the quad FSD from ${SC4_FSD}"
+    record FAIL "validation quad ${q}" "could not stage the quad FSD from $(quad_fsd_source "${q}")"
     continue
   fi
   start=${SECONDS}

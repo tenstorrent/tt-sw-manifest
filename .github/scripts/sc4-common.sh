@@ -7,6 +7,8 @@
 #                 "A=h1,h2,h3,h4 B=h5,h6,h7,h8". All hosts = every quad's hosts.
 #   EXABOX_IMAGE  tt-metal image with the test binaries and exabox scripts
 #   SC4_LOG_DIR   where logs go
+#   SC4_QUAD_FSD_DIR  committed per-quad FSDs (fsd-quad-<name>.textproto). A quad
+#                 with a file here uses it; any other quad is cut from SC4_FSD.
 #   SC4_FSD       full factory system descriptor to cut per-quad subsets from
 #   MPI_IF        MPI network interface (default: the route to a peer)
 
@@ -20,6 +22,7 @@ EXABOX_IMAGE="${EXABOX_IMAGE:?}"
 SC4_LOG_DIR="${SC4_LOG_DIR:-$(pwd)/sc4-logs}"
 SC4_FSD="${SC4_FSD:-/data/scaleout_configs/tt-cluster-config-sources/exabox-latest-main/factory_system_descriptor.textproto}"
 SC4_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SC4_QUAD_FSD_DIR="${SC4_QUAD_FSD_DIR:-$(cd "${SC4_SCRIPTS}/../sc4" 2>/dev/null && pwd)}"
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 mkdir -p "${SC4_LOG_DIR}"
 
@@ -97,12 +100,31 @@ stage_exabox() {
   echo "exabox scripts from ${EXABOX_IMAGE}: ${EXABOX_ROOT}"
 }
 
-# Cut the full FSD down to one quad's hosts and put it at the same path on each
-# of them. Prints that path.
+# Where a quad's FSD comes from: the committed file if there is one, else the
+# full FSD cut down to the quad's hosts.
+quad_fsd_source() { # quad_fsd_source <quad-name>
+  local f="${SC4_QUAD_FSD_DIR}/fsd-quad-$1.textproto"
+  if [[ -n "${SC4_QUAD_FSD_DIR}" && -f "${f}" ]]; then echo "${f}"; else echo "${SC4_FSD} (cut to quad $1)"; fi
+}
+
+# Put one quad's FSD at the same path on each of its hosts. Prints that path.
 stage_quad_fsd() { # stage_quad_fsd <quad-name>
   local name="$1" hosts="${QUAD_HOSTS[$1]}" out="${SC4_SCRATCH}/fsd-$1.textproto" h
+  local committed="${SC4_QUAD_FSD_DIR}/fsd-quad-$1.textproto"
   mkdir -p -m 755 "${SC4_SCRATCH}"
-  python3 -I "${SC4_SCRIPTS}/fsd-subset.py" "${SC4_FSD}" "${hosts}" "${out}" >&2 || return 1
+  if [[ -n "${SC4_QUAD_FSD_DIR}" && -f "${committed}" ]]; then
+    # The committed file must list exactly the quad's hosts, in quad order.
+    local listed
+    listed=$(sed -n 's/^ *hostname: *"\([^"]*\)".*/\1/p' "${committed}" | paste -sd, -)
+    if [[ "${listed}" != "${hosts}" ]]; then
+      echo "ERROR: ${committed} lists hosts ${listed}, but quad ${name} is ${hosts}" >&2
+      return 1
+    fi
+    cp "${committed}" "${out}"
+    echo "quad ${name} FSD: ${committed}" >&2
+  else
+    python3 -I "${SC4_SCRIPTS}/fsd-subset.py" "${SC4_FSD}" "${hosts}" "${out}" >&2 || return 1
+  fi
   chmod 644 "${out}"
   for h in ${hosts//,/ }; do
     [[ "${h}" == "$(hostname)" ]] && continue
