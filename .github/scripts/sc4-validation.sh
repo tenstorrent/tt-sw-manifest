@@ -47,17 +47,23 @@ for q in "${QUAD_NAMES[@]}"; do
     --iterations "${VALIDATION_ITERATIONS}" --output "${out}" 2>&1 | tee "${SC4_LOG_DIR}/quad-${q}.log"
   ec=${PIPESTATUS[0]}
   took="$(( (SECONDS - start) / 60 ))m$(( (SECONDS - start) % 60 ))s"
-  if [[ ${ec} -eq 124 || ${ec} -eq 137 ]]; then
-    record FAIL "validation quad ${q}" "timed out after ${VALIDATION_TIMEOUT_MIN}m (see quad-${q}.log)"
-    continue
-  fi
+  timed_out=0
+  [[ ${ec} -eq 124 || ${ec} -eq 137 ]] && timed_out=1
 
+  # Analyze whatever iterations finished, even after a timeout, so the job log
+  # names the cause (missing or extra connections, ARC timeout, ...).
   cp -r "${out}" "${SC4_LOG_DIR}/quad-${q}" 2>/dev/null || true
   python3 tools/scaleout/exabox/analyze_validation_results.py --all "${out}" 2>&1 |
     sed 's/\x1b\[[0-9;]*m//g' | tee "${SC4_LOG_DIR}/quad-${q}-analysis.txt"
   verdict=${PIPESTATUS[0]}
   rate=$(grep -m1 -oE 'Success Rate: [0-9.]+%' "${SC4_LOG_DIR}/quad-${q}-analysis.txt")
   headline=$(grep -m1 -E '^VALIDATION (PASSED|FAILED)' "${SC4_LOG_DIR}/quad-${q}-analysis.txt")
+  causes=$(grep -E '^[A-Za-z /]+: [1-9][0-9]* / [0-9]+' "${SC4_LOG_DIR}/quad-${q}-analysis.txt" |
+    grep -vE '^(Healthy links|Total)' | sed 's/ *$//' | paste -sd';' - | sed 's/;/; /g')
+  if [[ ${timed_out} -eq 1 ]]; then
+    record FAIL "validation quad ${q}" "timed out after ${VALIDATION_TIMEOUT_MIN}m; finished iterations: ${rate:-none}${causes:+ (${causes})}"
+    continue
+  fi
   if [[ ${verdict} -eq 0 ]]; then
     record PASS "validation quad ${q}" "${rate:-?}, ${VALIDATION_ITERATIONS} iterations in ${took}"
   else
