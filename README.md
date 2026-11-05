@@ -41,7 +41,7 @@ The same suite runs on every relevant PR, on Renovate bump PRs, on pushes to `ma
 
 3. **Version verify** — On the HW runners, confirm installed packages/CLIs match [`golden.json`](golden.json) (`verify-versions.sh`).
 
-   **Platform firmware** — Record BMC, BIOS, CPLD (BH Galaxy) and chip firmware versions (`platform-fw.sh`, read-only). A summary job compares them across hosts and flags any that differ. PCIe/ETH retimer versions need BMC Redfish credentials and show as `n/a` without them.
+   **Platform firmware** — Record BMC, BIOS, CPLD (BH Galaxy) and chip firmware versions (`platform-fw.sh`, read-only). The BMC version (e.g. `5.23`, from `ipmitool mc info`: firmware revision 0.05 + aux 0x23) is printed in the job log and as a run annotation. A summary job compares everything across hosts and flags any that differ.
 
 4. **PCI reset stress** — On the HW runners, run `tt-smi -r` ten times (`smi-reset.sh`; BH Galaxy uses `tt-smi -glx_reset`). Each reset is timed, and the log reports min, average, and max. The same step snapshots NVMe identities, PCI addresses, RAID members, and mounts before and after every reset and fails if a drive drops.
 
@@ -49,7 +49,7 @@ The same suite runs on every relevant PR, on Renovate bump PRs, on pushes to `ma
 
 6. **Metal upstream** — On the HW runners, run the syseng-style upstream suite (`metal-upstream.sh` / `upstream-tests-bh*`, host weights under `/opt/tenstorrent/hf-models`). Full logs are uploaded as `metal-upstream-<board>-output` artifacts.
 
-7. **SC4 cluster** — The BH super cluster nodes run items 2–5 but not metal upstream (a single-host suite). Once every node has passed, the head node drives multi-host tests across all eight Galaxies (two 4-host SC4 quads) with tt-metal's exabox scripts over SSH + MPI, using the `golden.json` tt-metal release image (`upstream-tests-bh-glx:<metal-version>`). See [`golden-sc4-cluster.yml`](.github/workflows/golden-sc4-cluster.yml):
+7. **SC4 cluster** — The BH super cluster nodes run items 2–5 but not metal upstream (a single-host suite). As soon as every super cluster node has passed (without waiting for the single-host machines), the head node drives multi-host tests across all eight Galaxies (two 4-host SC4 quads) with tt-metal's exabox scripts over SSH + MPI, using the `golden.json` tt-metal release image (`upstream-tests-bh-glx:<metal-version>`). See [`golden-sc4-cluster.yml`](.github/workflows/golden-sc4-cluster.yml):
    - **Health** — no stray process holds a device, `tt-smi -glx_reset` on every host, physical discovery, system health.
    - **Validation** — `run_validation.sh` per quad against that quad's slice of the exabox FSD (`fsd-subset.py`), judged by `analyze_validation_results.py`.
    - **Fabric** — `run_fabric_tests.sh --config 4x32` per quad: 2D torus stability (`*_short`) and neighbor exchange.

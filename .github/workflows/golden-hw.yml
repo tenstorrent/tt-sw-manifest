@@ -3,9 +3,11 @@
 # (upstream-tests-bh). Runners mirror tenstorrent/tt-smi/.github/workflows/test.yml
 # (test-hardware job).
 #
-# The BH super cluster nodes skip metal upstream (a single-host suite). After
-# every node has passed, they run the SC4 cluster tests (golden-sc4-cluster.yml)
-# from the head node instead: health, validation and fabric.
+# The BH super cluster nodes run as their own job (golden-hw-sc) with the same
+# steps, minus metal upstream (a single-host suite). As soon as every super
+# cluster node has passed, the SC4 cluster tests (golden-sc4-cluster.yml) start
+# from the head node: health, validation and fabric. They do not wait for the
+# single-host machines.
 #
 # Runs on push to main / renovate/**, PRs touching golden files, workflow_dispatch,
 # or when called by golden-release.yml.
@@ -19,7 +21,6 @@ on:
     branches:
       - main
       - renovate/**
-      - sc4-cluster-tests # TODO: drop once the SC4 bring-up branch merges
   pull_request:
     paths:
       - golden.json
@@ -80,25 +81,14 @@ jobs:
         # runner: job and artifact name; labels: runs-on; label: GOLDEN_RUNNER_LABEL,
         # which the scripts map to a board type.
         include:
-          # Off while the BH super cluster stages are brought up (PT-628).
-          # - { runner: p100a, labels: [p100a], label: p100a } # syseng-gh-01
-          # - { runner: p150a, labels: [p150a], label: p150a } # syseng-gh-03
-          # - { runner: p300a, labels: [p300a], label: p300a } # yyz-zephyr-01
-          # - { runner: quietbox2, labels: [quietbox2], label: quietbox2 } # BH QuietBox
-          # - { runner: bh-galaxy-revc, labels: [bh-galaxy-revc], label: bh-galaxy-revc } # BH Galaxy (shared with system FW)
+          - { runner: p100a, labels: [p100a], label: p100a } # syseng-gh-01
+          - { runner: p150a, labels: [p150a], label: p150a } # syseng-gh-03
+          - { runner: p300a, labels: [p300a], label: p300a } # yyz-zephyr-01
+          - { runner: quietbox2, labels: [quietbox2], label: quietbox2 } # BH QuietBox
+          - { runner: bh-galaxy-revc, labels: [bh-galaxy-revc], label: bh-galaxy-revc } # BH Galaxy (shared with system FW)
 
-          # BH super cluster: eight rev C Galaxies, two SC4 quads. Each runner has
-          # the pool label plus its hostname. a02u02 is also the head node.
-          - { runner: bh-glx-120-a02u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a02u02], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a02u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a02u08], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a03u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a03u02], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a03u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a03u08], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a04u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a04u02], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a04u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a04u08], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a05u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a05u02], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a05u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a05u08], label: super_cluster_bh_node }
-
-    steps:
+    # Shared with golden-hw-sc below (YAML anchor), so both run the same steps.
+    steps: &node-steps
       # smi-reset.sh runs under sudo and writes nvme-reset-check into the
       # workspace. A later checkout cannot unlink those root-owned files.
       - name: Remove root-owned reset artifacts
@@ -143,7 +133,7 @@ jobs:
 
       # A record, not a gate: BMC, BIOS, CPLD and chip firmware after the flash.
       # The platform-fw summary job compares them across hosts.
-      - name: Record platform firmware (BMC, BIOS, CPLD, retimers, chip FW)
+      - name: Record platform firmware (BMC, BIOS, CPLD, chip FW)
         env:
           VENV_DIR: /root/.tenstorrent-venv
           PLATFORM_FW_OUT: ${{ github.workspace }}/platform-fw/platform-fw-${{ matrix.runner }}.txt
@@ -230,10 +220,32 @@ jobs:
           path: ${{ github.workspace }}/metal-upstream-${{ matrix.runner }}.log
           if-no-files-found: warn
 
+  # BH super cluster: eight rev C Galaxies, two SC4 quads. Same steps as above.
+  golden-hw-sc:
+    name: Golden hw (${{ matrix.runner }})
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
+    runs-on: ${{ matrix.labels }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each runner has the pool label plus its hostname. a02u02 is also the
+        # head node.
+        include:
+          - { runner: bh-glx-120-a02u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a02u02], label: super_cluster_bh_node }
+          - { runner: bh-glx-120-a02u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a02u08], label: super_cluster_bh_node }
+          - { runner: bh-glx-120-a03u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a03u02], label: super_cluster_bh_node }
+          - { runner: bh-glx-120-a03u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a03u08], label: super_cluster_bh_node }
+          - { runner: bh-glx-120-a04u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a04u02], label: super_cluster_bh_node }
+          - { runner: bh-glx-120-a04u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a04u08], label: super_cluster_bh_node }
+          - { runner: bh-glx-120-a05u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a05u02], label: super_cluster_bh_node }
+          - { runner: bh-glx-120-a05u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a05u08], label: super_cluster_bh_node }
+    steps: *node-steps
+
   platform-fw-summary:
     name: Platform firmware across hosts
-    needs: golden-hw-integration
-    if: ${{ !cancelled() && needs.golden-hw-integration.result != 'skipped' }}
+    needs: [golden-hw-integration, golden-hw-sc]
+    if: ${{ !cancelled() && (needs.golden-hw-integration.result != 'skipped' || needs.golden-hw-sc.result != 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout golden versions repo
@@ -251,11 +263,12 @@ jobs:
       - name: Compare platform firmware across hosts
         run: python3 .github/scripts/platform-fw-summary.py platform-fw
 
-  # Starts only when every node above has installed, flashed and passed its
-  # tests, so all of the super cluster is on the golden.json pins.
+  # Starts as soon as every super cluster node has installed, flashed and passed
+  # its tests, so all of the super cluster is on the golden.json pins. Does not
+  # wait for the single-host machines.
   sc4:
     name: SC4 cluster
-    needs: golden-hw-integration
+    needs: golden-hw-sc
     uses: ./.github/workflows/golden-sc4-cluster.yml
     permissions:
       contents: read
