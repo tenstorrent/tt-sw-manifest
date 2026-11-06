@@ -139,7 +139,8 @@ jobs:
           {
             echo "tag=${TAG}"
             echo "bump=${BUMP}"
-            echo "body<<EOF"
+            echo "previous=${LATEST}"
+            echo "header<<EOF"
             echo "Semver bump: **${BUMP}** → \`${TAG}\`"
             if [[ -n "${REASON}" ]]; then
               echo
@@ -149,13 +150,33 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
           echo "Release tag: ${TAG} (bump=${BUMP})"
 
+      # Golden stack table, the tests this run passed (from its own job and step
+      # results) and any tests added since the previous release.
+      - name: Write release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREVIOUS: ${{ steps.tag.outputs.previous }}
+          HEADER: ${{ steps.tag.outputs.header }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?filter=latest&per_page=100" \
+            --jq '.jobs[]' > jobs.jsonl
+          prev_args=()
+          if [[ -n "${PREVIOUS}" ]] && gh release view "${PREVIOUS}" --json body --jq .body > previous-body.md 2>/dev/null; then
+            prev_args=(--previous previous-body.md)
+          fi
+          python3 .github/scripts/release-notes.py --golden release/golden.json --jobs jobs.jsonl \
+            --header "${HEADER}" "${prev_args[@]}" > release-notes.md
+          cat release-notes.md
+          cat release-notes.md >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          body: ${{ steps.tag.outputs.body }}
+          body_path: release-notes.md
           files: |
             release/golden.json
             release/*.ttis
