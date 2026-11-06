@@ -61,6 +61,22 @@ The same suite runs on every relevant PR, on Renovate bump PRs, on pushes to `ma
 | HW runners (self-hosted & shared with system FW) | Hardware suite (items 2–6) |
 | BH super cluster (`bh-glx-120-a0[2-5]u0[28]`, head node `a02u02`) | Items 2–5 per node, then SC4 cluster (item 7) |
 
+### Re-testing one machine
+
+Machines are listed in [`.github/hw-runners.json`](.github/hw-runners.json). To re-test some of them without waiting for a full run to finish, start **Golden — hardware** by hand with `runners` set:
+
+```bash
+gh workflow run golden-hw.yml -R tenstorrent/tt-sw-manifest --ref main -f runners=p300a
+gh workflow run golden-hw.yml -R tenstorrent/tt-sw-manifest --ref main -f runners=p300a,quietbox2
+gh workflow run golden-hw.yml -R tenstorrent/tt-sw-manifest --ref main -f runners=super-cluster
+```
+
+- Single-host machines (`p100a`, `p150a`, `p300a`, `quietbox2`, `bh-galaxy-revc`) start straight away, beside any other run.
+- `super-cluster` runs all eight nodes and then SC4. It waits for any other run on the same branch. Super cluster nodes cannot run one at a time: a node's job resets its Galaxy, which would break SC4 tests on the cluster, and SC4 needs all eight nodes.
+- Such a run is a check on its own. It does not change the result of the original run. For a release, use **Re-run failed jobs** on the release run once it has finished.
+
+On `main` (pushes and the release gate), a new hardware run waits for the one in progress instead of cancelling it. PR runs still cancel stale ones. A job that is cancelled finishes with one clean `tt-smi` reset, so a cancel never leaves the boards half reset.
+
 ## Offline test (your hardware)
 
 [`offline_manifest_test.sh`](offline_manifest_test.sh) is the same hardware flow as CI (install → flash → verify → reset ×10 → snapshot → metal upstream), run on a machine you have. Use it to check a [`golden.json`](golden.json) pin set before or instead of waiting on the self-hosted runners.

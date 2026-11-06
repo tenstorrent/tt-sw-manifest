@@ -1,0 +1,20 @@
+{
+  "_comment": "Machines for golden-hw.yml. runner: job and artifact name, and the name to pass in the workflow's runners input; labels: runs-on; label: GOLDEN_RUNNER_LABEL, which the scripts map to a board type; host: the machine, for reference.",
+  "single_host": [
+    { "runner": "p100a", "labels": ["p100a"], "label": "p100a", "host": "syseng-gh-01" },
+    { "runner": "p150a", "labels": ["p150a"], "label": "p150a", "host": "syseng-gh-03" },
+    { "runner": "p300a", "labels": ["p300a"], "label": "p300a", "host": "yyz-zephyr-01" },
+    { "runner": "quietbox2", "labels": ["quietbox2"], "label": "quietbox2", "host": "BH QuietBox" },
+    { "runner": "bh-galaxy-revc", "labels": ["bh-galaxy-revc"], "label": "bh-galaxy-revc", "host": "BH Galaxy, shared with system FW" }
+  ],
+  "super_cluster": [
+    { "runner": "bh-glx-120-a02u02", "labels": ["self-hosted", "super_cluster_bh_node", "bh-glx-120-a02u02"], "label": "super_cluster_bh_node", "host": "head node" },
+    { "runner": "bh-glx-120-a02u08", "labels": ["self-hosted", "super_cluster_bh_node", "bh-glx-120-a02u08"], "label": "super_cluster_bh_node" },
+    { "runner": "bh-glx-120-a03u02", "labels": ["self-hosted", "super_cluster_bh_node", "bh-glx-120-a03u02"], "label": "super_cluster_bh_node" },
+    { "runner": "bh-glx-120-a03u08", "labels": ["self-hosted", "super_cluster_bh_node", "bh-glx-120-a03u08"], "label": "super_cluster_bh_node" },
+    { "runner": "bh-glx-120-a04u02", "labels": ["self-hosted", "super_cluster_bh_node", "bh-glx-120-a04u02"], "label": "super_cluster_bh_node" },
+    { "runner": "bh-glx-120-a04u08", "labels": ["self-hosted", "super_cluster_bh_node", "bh-glx-120-a04u08"], "label": "super_cluster_bh_node" },
+    { "runner": "bh-glx-120-a05u02", "labels": ["self-hosted", "super_cluster_bh_node", "bh-glx-120-a05u02"], "label": "super_cluster_bh_node" },
+    { "runner": "bh-glx-120-a05u08", "labels": ["self-hosted", "super_cluster_bh_node", "bh-glx-120-a05u08"], "label": "super_cluster_bh_node" }
+  ]
+}

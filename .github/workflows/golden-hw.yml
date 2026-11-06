@@ -11,10 +11,15 @@
 #
 # Runs on push to main / renovate/**, PRs touching golden files, workflow_dispatch,
 # or when called by golden-release.yml.
+#
+# Machines are listed in .github/hw-runners.json. A manual run can test only
+# some of them with the runners input, e.g. "p300a" or "p300a,quietbox2" (single
+# hosts, run straight away beside any other run) or "super-cluster" (all eight
+# nodes, then SC4). Super cluster nodes cannot run one at a time.
 # Self-hosted runners may log "sudo: unable to resolve host ubuntu" when hostname is not in
 # /etc/hosts — harmless. To silence: echo "127.0.0.1 ubuntu" | sudo tee -a /etc/hosts
 name: Golden — hardware
-run-name: Golden hw · ${{ github.event_name }}
+run-name: Golden hw · ${{ github.event_name }}${{ inputs.runners && format(' · {0}', inputs.runners) || '' }}
 
 on:
   push:
@@ -31,6 +36,7 @@ on:
       - .github/workflows/renovate.yml
       - .github/scripts/**
       - .github/sc4/**
+      - .github/hw-runners.json
       - tests/metalium-workload.py
   workflow_dispatch:
     inputs:
@@ -38,11 +44,28 @@ on:
         description: Why you are running this workflow (optional)
         required: false
         type: string
+      runners:
+        description: >-
+          Only these machines, comma-separated (e.g. p300a,quietbox2), or
+          super-cluster for the 8 nodes + SC4. Empty = every machine.
+        required: false
+        type: string
+        default: ""
   workflow_call:
+    inputs:
+      runners:
+        required: false
+        type: string
+        default: ""
 
+# One full run per ref at a time. On main (pushes and the release gate) a new
+# run waits for the one in progress instead of cancelling it, so a release and
+# a merge cannot cancel each other mid-reset. PR runs still cancel stale ones.
+# A manual run of single-host machines only gets its own group and starts at
+# once; it cannot clash with another run, since a runner takes one job at a time.
 concurrency:
-  group: golden-hw-${{ github.ref }}
-  cancel-in-progress: true
+  group: golden-hw-${{ github.ref }}${{ inputs.runners && !contains(inputs.runners, 'super-cluster') && format('-only-{0}', inputs.runners) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   actions: write # skip-duplicate-actions (query/cancel workflow runs)
@@ -71,22 +94,39 @@ jobs:
       - id: set
         run: echo "should_skip=${{ steps.skip_check.outputs.should_skip || 'false' }}" >> "$GITHUB_OUTPUT"
 
+  # Which machines this run tests (all, unless the runners input names some).
+  plan:
+    name: Pick machines
+    runs-on: ubuntu-latest
+    outputs:
+      single_host: ${{ steps.plan.outputs.single_host }}
+      super_cluster: ${{ steps.plan.outputs.super_cluster }}
+    steps:
+      - name: Checkout golden versions repo
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/hw-runners.json
+            .github/scripts/hw-plan.py
+          sparse-checkout-cone-mode: false
+      - id: plan
+        name: Pick machines
+        env:
+          RUNNERS: ${{ inputs.runners }}
+        run: python3 .github/scripts/hw-plan.py
+
   golden-hw-integration:
     name: Golden hw (${{ matrix.runner }})
-    needs: pre_job
-    if: needs.pre_job.outputs.should_skip != 'true'
+    needs: [pre_job, plan]
+    if: needs.pre_job.outputs.should_skip != 'true' && needs.plan.outputs.single_host != '[]'
     runs-on: ${{ matrix.labels }}
     strategy:
       fail-fast: false
       matrix:
-        # runner: job and artifact name; labels: runs-on; label: GOLDEN_RUNNER_LABEL,
-        # which the scripts map to a board type.
-        include:
-          - { runner: p100a, labels: [p100a], label: p100a } # syseng-gh-01
-          - { runner: p150a, labels: [p150a], label: p150a } # syseng-gh-03
-          - { runner: p300a, labels: [p300a], label: p300a } # yyz-zephyr-01
-          - { runner: quietbox2, labels: [quietbox2], label: quietbox2 } # BH QuietBox
-          - { runner: bh-galaxy-revc, labels: [bh-galaxy-revc], label: bh-galaxy-revc } # BH Galaxy (shared with system FW)
+        # Single-host machines from .github/hw-runners.json. runner: job and
+        # artifact name; labels: runs-on; label: GOLDEN_RUNNER_LABEL, which the
+        # scripts map to a board type.
+        include: ${{ fromJSON(needs.plan.outputs.single_host) }}
 
     # Shared with golden-hw-sc below (YAML anchor), so both run the same steps.
     steps: &node-steps
@@ -221,26 +261,39 @@ jobs:
           path: ${{ github.workspace }}/metal-upstream-${{ matrix.runner }}.log
           if-no-files-found: warn
 
+      # A job cancelled in the middle of a reset leaves the boards half reset, and
+      # the next job cannot flash them ("Query mappings failed ... No such
+      # device"). Runs only when the job is cancelled, and last, so it runs
+      # whichever step was cancelled.
+      - name: Finish the reset after a cancel
+        if: cancelled()
+        timeout-minutes: 5
+        env:
+          GOLDEN_RUNNER_LABEL: ${{ matrix.label }}
+        run: |
+          smi=/root/.tenstorrent-venv/bin/tt-smi
+          sudo test -x "${smi}" || { echo "tt-smi not installed yet; nothing to reset"; exit 0; }
+          for _ in $(seq 30); do pgrep -f 'tt-smi|tt-flash' >/dev/null || break; sleep 2; done
+          case "${GOLDEN_RUNNER_LABEL}" in
+            bh-galaxy*|super_cluster_bh_node*) args=(-glx_reset) ;;
+            *) args=(-r) ;;
+          esac
+          echo "Resetting with tt-smi ${args[*]}"
+          sudo timeout 240 "${smi}" "${args[@]}" || echo "::warning::reset after cancel failed; the boards may need a reset or reboot"
+
   # BH super cluster: eight rev C Galaxies, two SC4 quads. Same steps as above.
   golden-hw-sc:
     name: Golden hw (${{ matrix.runner }})
-    needs: pre_job
-    if: needs.pre_job.outputs.should_skip != 'true'
+    needs: [pre_job, plan]
+    if: needs.pre_job.outputs.should_skip != 'true' && needs.plan.outputs.super_cluster != '[]'
     runs-on: ${{ matrix.labels }}
     strategy:
       fail-fast: false
       matrix:
-        # Each runner has the pool label plus its hostname. a02u02 is also the
-        # head node.
-        include:
-          - { runner: bh-glx-120-a02u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a02u02], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a02u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a02u08], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a03u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a03u02], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a03u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a03u08], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a04u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a04u02], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a04u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a04u08], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a05u02, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a05u02], label: super_cluster_bh_node }
-          - { runner: bh-glx-120-a05u08, labels: [self-hosted, super_cluster_bh_node, bh-glx-120-a05u08], label: super_cluster_bh_node }
+        # The eight super cluster nodes from .github/hw-runners.json. Each
+        # runner has the pool label plus its hostname; a02u02 is also the head
+        # node.
+        include: ${{ fromJSON(needs.plan.outputs.super_cluster) }}
     steps: *node-steps
 
   platform-fw-summary:
